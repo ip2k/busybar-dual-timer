@@ -1,0 +1,2 @@
+Drop a custom chime here as chime.wav (raw 16-bit LE mono 44.1kHz PCM).
+If absent, the app synthesises one at startup.

@@ -1,0 +1,44 @@
+{
+  "device": {
+    "host": "192.168.1.163",
+    "apiToken": null
+  },
+
+  "app": {
+    "name": "dual_timer",
+    "priority": 95
+  },
+
+  "timers": [
+    { "label": "A", "seconds": 1500, "color": "#3BA7FFFF" },
+    { "label": "B", "seconds": 300,  "color": "#33D17AFF" }
+  ],
+
+  "gestures": {
+    "button": "start",
+    "longPressMs": 700,
+    "multiTapWindowMs": 400,
+    "tapMode": "deferred",
+    "resetTapCount": 3
+  },
+
+  "behavior": {
+    "resetOnSwitch": false,
+    "autoAdvanceOnExpiry": false,
+    "streamFrames": true,
+    "startPaused": true
+  },
+
+  "expiry": {
+    "flashSeconds": 10,
+    "flashHz": 3,
+    "ledColor": "#FF3B30FF",
+    "sound": {
+      "mode": "asset",
+      "file": "chime.wav",
+      "stockPath": null,
+      "repeat": 3,
+      "repeatEveryMs": 1200
+    }
+  }
+}

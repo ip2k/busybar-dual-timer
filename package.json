@@ -1,0 +1,21 @@
+{
+  "name": "busy-dual-timer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Two-timer widget for the BUSY Bar. One button: tap = start/pause, hold = switch A/B, triple-tap = reset.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "node --experimental-strip-types src/index.ts",
+    "test": "node --experimental-strip-types test/smoke.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.1",
+    "typescript": "~5.8.3"
+  }
+}

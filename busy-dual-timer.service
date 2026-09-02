@@ -1,0 +1,22 @@
+[Unit]
+Description=BUSY Bar dual timer widget
+Documentation=https://docs.busy.app/bar/dev/http-api
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=likwid
+WorkingDirectory=/opt/busy-dual-timer
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=5
+# The Bar may not answer immediately after a reboot; keep retrying rather than
+# giving up after the default burst limit.
+StartLimitIntervalSec=0
+Environment=NODE_ENV=production
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
