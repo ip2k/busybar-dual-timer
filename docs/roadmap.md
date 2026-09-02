@@ -26,10 +26,11 @@ Two smaller things still uncharacterised, both needing a person at the device:
    `multiTapWindowMs: 400` is the one still worth moving. In `deferred` mode it
    is not just a recogniser detail: a single tap cannot be known to be single
    until the window closes, so **400 ms is exactly the start/pause lag**. The
-   only captured inter-tap data is from deliberate slow taps ~1.1 s apart, which
-   says nothing about how fast a real triple-tap runs — so this needs measuring
-   before it is lowered, not guessing. Log raw press timestamps during a few
-   real triple-taps, take the widest gap, add margin.
+   It is now **measured**: a real rapid triple-click ran 147–182 ms press-to-press
+   (81–92 ms release-to-next-press), so 400 ms carries roughly 2x margin. Around
+   **250 ms** would keep comfortable headroom while cutting 150 ms off every
+   start/pause. Worth trying by feel before committing to a number — and note the
+   measurement is from the dial click, so confirm it holds for the START button.
 
    The alternative is `tapMode: "immediate"`, which removes the lag entirely at
    the cost of flickering through intermediate states during a triple tap. Same
@@ -57,10 +58,15 @@ Two smaller things still uncharacterised, both needing a person at the device:
 - **Use `countdown` elements.** Would remove the per-second redraw entirely, at
   the cost of font control. Worth a look if network chattiness ever matters, or
   if the default countdown rendering turns out to look good.
-- **Use the encoder wheel and mode switch.** `proto.ts` already decodes
-  `EncoderEvent` and `SwitchEvent`, but neither was observed during testing. The
-  wheel is an obvious way to dial timer lengths on-device without editing config
-  — which was the third option offered during design and not taken.
+- **Use the encoder wheel and mode switch.** No longer speculative: both are
+  now confirmed on the wire, and `proto.ts` decodes them correctly as-is (see
+  `docs/busy-bar-api.md`). Dialing timer lengths on-device is a small change —
+  `index.ts` already receives `{kind: 'encoder', delta}` and simply ignores it.
+
+  The dial gives three bindings, not one: rotate, click (`ok`), and click+spin,
+  since rotation is delivered while the dial is held. An obvious shape is
+  rotate = adjust the current timer while paused, click+spin = coarse steps.
+  Needs rate-limiting: a fast spin emits detents 15 ms apart.
 - **Back display.** 160×80 greyscale is completely unused. Could show both
   timers at once, or a session history.
 - **More than two timers.** `DualTimer` is hardcoded to two slots because the

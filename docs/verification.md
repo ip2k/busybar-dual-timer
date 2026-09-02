@@ -100,6 +100,22 @@ progress bar rendered full-width in a dimmed green (`176138`).
 Over the ~6 minute session: **0** draw failures, **0** stream disconnects, **0**
 sound failures.
 
+### Encoder, dial click and switch (2026-09-02)
+
+Captured off `/api/status/ws` with a raw byte dumper, by hand:
+
+- **The dial rotation emits `EncoderEvent`**, exactly `±1` zigzag sint32 per
+  detent. `proto.ts`'s inferred mapping was already correct.
+- **The dial click is the `ok` button**, and it arrives as a completely empty
+  `ButtonEvent` — the proto3 default-omission trap, observed live.
+- **Rotation is delivered while the dial is held**, so click+spin is available
+  as a modifier gesture.
+- **Switch positions** decode correctly (`apps` = 3, `settings` = 4), and the
+  `BUTTONS` ordering (`ok`, `back`, `start`) is now confirmed rather than
+  assumed — `back` was seen for the first time.
+
+Wire formats and measured human timings are in `docs/busy-bar-api.md`.
+
 ### Physical button events reach the API
 
 A human tapped START three times and held it once, while a WebSocket client was

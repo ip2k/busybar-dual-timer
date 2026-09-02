@@ -187,6 +187,104 @@ This closes the loop for scripted visual checks — the widget layout (tiny labe
 top-left, large centred time, progress bar on the bottom row) was confirmed from
 a frame grab rather than by eye.
 
+### Encoder, switch and button wire formats (verified)
+
+All three input kinds were captured off `/api/status/ws` with a raw dumper, so
+these are observed bytes rather than inference. `StateUpdate.input` is field
+**11** (`0x5a`), and inside `InputEvent` the oneof tags are `button_event` = 1,
+`switch_event` = 2, `encoder_event` = 3 — exactly as `proto.ts` assumed.
+
+| Input | Bytes after the `fixed64` timestamp | Decodes to |
+| --- | --- | --- |
+| dial, one detent left | `12 06 5a 04 1a 02 08 01` | `encoder delta -1` |
+| dial, one detent right | `12 06 5a 04 1a 02 08 02` | `encoder delta +1` |
+| START press | `12 06 5a 04 0a 02 08 02` | `button start, press` |
+| START release | `12 08 5a 06 0a 04 08 02 10 01` | `button start, release` |
+| BACK press | `12 06 5a 04 0a 02 08 01` | `button back, press` |
+| switch → settings | `12 06 5a 04 12 02 08 04` | `switch settings` |
+| switch → apps | `12 06 5a 04 12 02 08 03` | `switch apps` |
+
+**The dial works and the existing decoder was already right.** Each detent emits
+one `EncoderEvent` with a **zigzag sint32** delta of exactly `±1` — it does not
+accumulate or send larger steps when spun fast. Turning it several clicks
+produces several separate events, one per detent, roughly 0.6 s apart at a
+casual spin rate.
+
+This also confirms the `BUTTONS` ordering (`ok`, `back`, `start` = 0, 1, 2) —
+previously only `start` and `ok` had been seen — and the `SWITCH_POSITIONS`
+ordering, where `apps` = 3 and `settings` = 4.
+
+Note the proto3 default omission in action: a START *press* carries no `action`
+field at all (`08 02` is the button, action 0 is omitted), while the *release*
+carries `10 01`. This is the trap documented in `CLAUDE.md`, visible on the wire.
+
+### The dial click is the `ok` button — and it composes with rotation
+
+Pressing the dial in emits `button ok`. That accounts for `ok` on hardware with
+no obvious separate OK button, and it means the dial is **two** inputs: a
+rotation and a button.
+
+```
+12 04 5a 02 0a 00           ok press    <- note: ButtonEvent is EMPTY
+12 06 5a 04 0a 02 10 01     ok release
+```
+
+The press is the proto3 trap from `CLAUDE.md` in its purest form, now observed
+on the wire: button `ok` is 0 and action `press` is 0, both are defaults, so
+proto3 omits **both** and `ButtonEvent` arrives zero-length (`0a 00`). A decoder
+that treats an empty message as "no data" silently loses every dial click. The
+release carries `10 01` because action 1 is not a default.
+
+**Rotation is reported while the dial is held down.** Captured click → spin →
+release:
+
+```
+21.026s  ok press
+21.622s  encoder +1     <- 11 detents, all delivered during the hold
+  ...
+22.958s  encoder +1
+23.567s  ok release
+```
+
+So press-and-spin is a usable modifier gesture — coarse vs fine adjustment, or
+"hold to change the other timer" — without any conflict between the two streams.
+
+### Measured input timings
+
+Real human timings, captured rather than assumed. Useful for setting gesture
+windows:
+
+| | |
+| --- | --- |
+| Rapid click, press → press | **147–182 ms** |
+| Rapid click, release → next press | **81–92 ms** |
+| Click duration | 66–90 ms |
+| Casual spin, detent → detent | ~600 ms |
+| Fast spin, detent → detent | as low as **15 ms** |
+
+Two consequences. `multiTapWindowMs: 400` has roughly **2× margin** over a real
+rapid multi-click at ~180 ms press-to-press, so it can come down meaningfully.
+And a fast spin can emit detents 15 ms apart, so anything driven by the encoder
+wants rate-limiting rather than a redraw per event.
+
+### Input events can arrive in a batch on connect (observed once)
+
+On one connection the **first** message was 1691 bytes and decoded to a burst of
+~28 encoder events, an `ok` press/release, a switch event and ~40 `start`
+press/release pairs — historical input, delivered all at once at connect time.
+
+A fresh connection made minutes later, with the device untouched, showed **no**
+such batch, and the recent real presses were *not* replayed. So this is not a
+simple "replay everything since boot", and the trigger is not understood.
+
+It matters because `InputStream` reconnects automatically. If a batch like that
+arrives after a reconnect, `GestureRecognizer` would see dozens of press/release
+pairs back to back and could fire spurious taps or resets. Nothing of the sort
+has been seen in normal running, and it has not recurred — but a reconnect that
+suddenly resets someone's timer would be very confusing, so it is worth
+knowing about. Guarding would mean ignoring input that arrives implausibly soon
+after `onOpen`, or discarding a batch above some size.
+
 ### Auth
 
 `X-API-Token` header for local access when a token is set; the WebSocket takes
@@ -204,14 +302,15 @@ No code changes between them beyond the base URL.
 - **Stock asset names.** `GET /api/storage/list?path=/` returns 400 — the query
   parameter name is wrong or listing works differently. Without it, `stock_path`
   values for images and sounds are unknown.
-- **`{"enable": false}` on the WebSocket.** Only `true` has been tested. If it
-  suppresses the once-a-second frame updates while still delivering input
-  events, that's a worthwhile bandwidth win (`behavior.streamFrames`).
+- **`{"enable": false}` on the WebSocket.** With `false` the socket goes
+  completely silent — not even the 1 Hz timestamp heartbeat arrives. Whether it
+  still delivers *input* events is **still unknown**: the one capture made with
+  `false` happened to have no button presses in it, so the silence proves
+  nothing either way. Re-test with a deliberate press before trusting
+  `behavior.streamFrames: false`.
 - **`/api/busy/*`.** The built-in BUSY timer already has profile slots. Driving
   those instead of rendering our own display was never explored and might give
   a more native-feeling result.
-- **Encoder and switch events.** Decoded by `proto.ts` but never seen on the
-  wire during testing, so the field mappings are unconfirmed.
 
 ## Libraries
 
