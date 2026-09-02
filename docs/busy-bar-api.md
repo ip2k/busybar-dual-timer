@@ -187,6 +187,55 @@ This closes the loop for scripted visual checks — the widget layout (tiny labe
 top-left, large centred time, progress bar on the bottom row) was confirmed from
 a frame grab rather than by eye.
 
+### Audio: `200 OK` proves nothing — you must listen
+
+`POST /api/audio/play` returns `{"result":"OK"}` with HTTP 200 for files that
+**do not exist**:
+
+```
+{"application_name":"dual_timer","stock_path":"shared/this_does_not_exist.snd"}  -> 200 {"result":"OK"}
+{"application_name":"dual_timer","path":"nope_not_real.wav"}                     -> 200 {"result":"OK"}
+```
+
+The spec documents a `404` for "Audio file not found or is unplayable". The
+device never sends it. So the response is an acknowledgement that the request
+was accepted, not evidence that a sound was produced — **the only way to verify
+audio is for a person to listen to the Bar.** An earlier version of this project
+recorded audio as "verified" on the strength of a 200; that was wrong.
+
+Verified properly, by ear: both a stock sound and our uploaded, synthesised
+headerless-PCM chime are **audible and distinct from one another**.
+
+### Stock assets and storage layout (verified)
+
+`GET /api/storage/list?path=...` requires a path matching `^/ext(/...)*$` — it
+must start with `/ext`. `?path=/` returns 400, which is what made this look
+broken before.
+
+| Path | Contents |
+| --- | --- |
+| `/ext` | `apps_assets`, `user_assets`, `apps_data`, `update`, `Manifest` |
+| `/ext/apps_assets/shared/sounds` | the stock sounds |
+| `/ext/apps_assets/shared/` | also `animations`, `fonts`, `images`, `ca` |
+| `/ext/user_assets/<app_name>` | assets uploaded by your app |
+
+The stock sounds, which answers the long-open "stock asset names" question:
+
+| File | Size | Duration at s16le mono 44.1 kHz |
+| --- | --- | --- |
+| `volume_change.snd` | 44100 | exactly 0.5 s |
+| `calendar_event_starts.snd` | 132300 | exactly 1.5 s |
+| `calendar_reminder_ends.snd` | 132300 | exactly 1.5 s |
+
+Those sizes are *exact* multiples for 16-bit mono at 44.1 kHz, which
+independently **confirms the audio format** rather than inferring it from
+busylib's ffmpeg arguments. Play one with
+`{"application_name":"<app>","stock_path":"shared/volume_change.snd"}`.
+
+An asset uploaded by this app shows up at `/ext/user_assets/dual_timer/` — handy
+for confirming an upload actually landed, since the upload response is as
+uninformative as the playback one.
+
 ### Encoder, switch and button wire formats (verified)
 
 All three input kinds were captured off `/api/status/ws` with a raw dumper, so
@@ -299,9 +348,6 @@ No code changes between them beyond the base URL.
 
 ## Open questions
 
-- **Stock asset names.** `GET /api/storage/list?path=/` returns 400 — the query
-  parameter name is wrong or listing works differently. Without it, `stock_path`
-  values for images and sounds are unknown.
 - **`{"enable": false}` on the WebSocket.** With `false` the socket goes
   completely silent — not even the 1 Hz timestamp heartbeat arrives. Whether it
   still delivers *input* events is **still unknown**: the one capture made with

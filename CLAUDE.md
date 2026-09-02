@@ -108,7 +108,16 @@ smoke test meaningful. I/O belongs in `api.ts` and orchestration in `index.ts`.
    *also* act on the same press. Custom gestures ride alongside device
    behaviour; they don't suppress it.
 5. **Audio is headerless PCM despite the `.wav` name** — s16le, mono, 44.1 kHz.
-   A real WAV file with a RIFF header is not what the firmware wants.
+   A real WAV file with a RIFF header is not what the firmware wants. Confirmed
+   twice over: audible by ear, and the stock sounds are exactly 0.5 s / 1.5 s at
+   that format.
+8. **`POST /api/audio/play` returns `200 {"result":"OK"}` for files that do not
+   exist**, and never the `404` its spec documents. The status code is worthless
+   as evidence — audio can only be verified by a person listening. Do not mark it
+   verified any other way.
+9. **`GET /api/storage/list` needs a path starting with `/ext`.** `?path=/`
+   returns 400. Stock sounds live in `/ext/apps_assets/shared/sounds`; this app's
+   uploads land in `/ext/user_assets/dual_timer/`.
 6. **`/api/openapi.json` does not exist.** It's `/openapi.yaml` at the root.
 7. **`/api/screen` wants an integer.** `?display=0` (front) / `1` (back), not
    `front`. Despite the `image/bmp` content type the body is **base64 text** of

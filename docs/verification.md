@@ -31,17 +31,16 @@ Then, in order:
 | --- | --- |
 | `POST /api/input?key=start` | `[gesture] tap -> running` — synthetic press decoded off the WebSocket and drove the state machine |
 | waited | `[expiry] timer A finished` at **12.078 s** after the tap |
-| expiry audio | **no** `[sound] playback failed` — `POST /api/audio/play` returned OK for both repeats |
+| expiry audio | `POST /api/audio/play` returned OK — but see the correction below; this proved nothing |
 | three rapid `POST /api/input` | `[gesture] multi-tap -> reset` — exactly one reset, no stray taps |
 | `SIGINT` | `[shutdown] SIGINT`, display cleared, process exited 0 |
 
 Over the whole run there were **zero** `[draw] failed` lines — the per-second
 redraw at priority 95 held for the entire session.
 
-**Audio now works.** This was flagged as the most likely thing to be wrong. Both
-halves are proven: the headerless-PCM upload is accepted, and playback of an
-uploaded app asset returns OK. The synthesised chime was used (no `chime.wav`
-in `assets/`), so `generateChime()` produces something the firmware accepts.
+**Correction — that run did not prove audio worked.** `POST /api/audio/play`
+returns `{"result":"OK"}` even for files that do not exist, so the absence of an
+error said nothing. Audio was later verified properly, by ear; see below.
 
 ### The rendered widget, read back off the panel
 
@@ -99,6 +98,28 @@ progress bar rendered full-width in a dimmed green (`176138`).
 
 Over the ~6 minute session: **0** draw failures, **0** stream disconnects, **0**
 sound failures.
+
+### Audio, verified by ear (2026-09-02)
+
+The earlier "audio works" claim rested on an HTTP 200 and was wrong: the device
+returns `200 {"result":"OK"}` for deliberately bogus paths, both `stock_path`
+and `path`. It never returns the `404` its own spec documents.
+
+Tested the only way that actually works — a person listening to the Bar. Played
+the device's stock `shared/volume_change.snd` four times, then our uploaded
+`chime.wav` four times. Both were **audible**, and the two were **distinct from
+each other**, confirming that the second was our file and not a repeat of the
+stock sound.
+
+So the full audio path is real: `generateChime()` produces valid PCM, the upload
+lands (confirmed independently at `/ext/user_assets/dual_timer/chime.wav`,
+47628 bytes), and playback is audible. Device volume was 100.
+
+The format is confirmed from a second direction too: the stock sounds are 44100
+and 132300 bytes, exactly 0.5 s and 1.5 s of 16-bit mono 44.1 kHz.
+
+**Lesson for this repo: never mark an output-producing endpoint verified on the
+strength of its status code.**
 
 ### Encoder, dial click and switch (2026-09-02)
 
