@@ -64,6 +64,41 @@ so colour survives the round trip intact.
 
 This means layout changes can now be checked from a script instead of by eye.
 
+### The gesture set, driven by a human thumb over Wi-Fi (2026-09-02)
+
+The three gestures were exercised on real hardware, by hand, with the Bar on
+Wi-Fi at `192.168.1.163` and the program running the **shipped `config.json`**
+(A=25:00, B=5:00) — not a scratch copy. Latency 13–35 ms.
+
+| Gesture | Log line | Notes |
+| --- | --- | --- |
+| single tap | `[gesture] tap -> running` | first real press to drive the assembled program |
+| hold ≈2 s | `[gesture] hold -> timer B (05:00)` | **no trailing `tap`** — the release was swallowed, as designed |
+| three quick taps | `[gesture] multi-tap -> reset` | exactly one reset, no stray `tap` first |
+
+**The long press fires under the thumb.** Confirmed visually: the panel flipped
+to B partway through an ~2 s hold, not on release. This is the behaviour
+`gestures.ts` is built around — the threshold fires while the button is still
+down and the release that follows is swallowed — and it is what makes the switch
+feel responsive rather than laggy. It had never been observed before.
+
+All three gestures behaved as intended, and no disruptive firmware behaviour was
+seen underneath: the widget kept the screen throughout and each press did only
+what the widget meant it to. (The switch position during this run was not
+recorded, so a position-dependent interaction is not ruled out.)
+
+The swallowed release and the single-reset-from-three-taps are the two things
+most likely to go wrong with real finger timing, and both held. `longPressMs:
+700` and `multiTapWindowMs: 400` are now known to work in the hand, though they
+still have not been *tuned* — see `docs/roadmap.md`.
+
+Frame grabs confirmed each state on the panel: after the hold the label read `B`
+with `05:00` in `33d17a`, exactly the configured `#33D17AFF`, and the paused
+progress bar rendered full-width in a dimmed green (`176138`).
+
+Over the ~6 minute session: **0** draw failures, **0** stream disconnects, **0**
+sound failures.
+
 ### Physical button events reach the API
 
 A human tapped START three times and held it once, while a WebSocket client was
@@ -119,32 +154,27 @@ This confirms the element schema, the font names, the rectangle element, the
 
 ## Not yet verified
 
-- **The long-press switch gesture.** `POST /api/input` sends a *single key
-  press* — the spec has no duration and no separate press/release — so a hold
-  cannot be synthesised. Switching A↔B is the one gesture that still needs a
-  human thumb on the button.
-- **Real physical presses through the assembled program.** Button events were
-  captured from real presses earlier, and the gesture recogniser was driven by
-  synthetic ones; the two halves have not been joined. Whether the firmware also
-  acts on the same press underneath the widget remains open.
-- **Long-run stability.** The longest run so far is minutes. Reconnect
-  behaviour, clock drift over hours, and what happens when the device sleeps are
-  all unobserved. One reconnect was seen at shutdown (`code 1005`), which is the
-  expected close, not a fault.
-- **The Bar over Wi-Fi.** This run went over USB; the LAN address did not serve
-  HTTP (see below).
+- **Long-run stability.** The longest observed run is minutes, over both USB and
+  Wi-Fi, clean in both. Clock drift over hours, reconnect behaviour after a real
+  network drop, and what happens when the device sleeps are all still unobserved.
+- **Firmware behaviour underneath the widget, per switch position.** No
+  interference was seen during the by-hand run — every press did only what the
+  widget intended — but the switch position was not recorded at the time, so
+  whether some position changes what START does natively is still open.
+- **Expiry with a real press to dismiss it.** Expiry, flash and chime have run to
+  completion on their own timer; acknowledging one with a physical tap has not
+  been tried.
 
-## Environment note: `192.168.1.163` is not currently serving the API
+## Connection note
 
-As of this run the configured host in `config.json` does not work:
+Both paths are now proven:
 
-- `192.168.1.163` — pings (57 ms, MAC `c:fa:22:0:53:36`) but TCP 80 refuses.
-  The latency and the refusal suggest something else holds that address now.
-- `10.0.4.20` (USB) — fully working: `api_semver 25.0.0`, `openapi.yaml` 88146 B.
+- **Wi-Fi `192.168.1.163`** — works; this is what `config.json` ships with.
+- **USB `10.0.4.20`** — works; useful when the Bar is tethered to the machine.
 
-`config.json` has been left pointing at `192.168.1.163`. Either re-check the
-Bar's Wi-Fi address and update it, or run over USB with `BUSY_TIMER_CONFIG`
-pointed at a config using `10.0.4.20`.
+Earlier in testing `192.168.1.163` pinged but refused TCP 80 while the Bar was
+on USB. That was the address not being served at the time, not a defect; once
+the Bar was moved to Wi-Fi it answered there normally.
 
 ## How to verify the rest
 

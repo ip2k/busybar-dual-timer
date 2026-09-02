@@ -10,11 +10,11 @@ reset. Everything runs off-device against the Bar's local HTTP API; nothing is
 installed on the Bar itself.
 
 Status: **working, and driven through a full cycle against real hardware**
-(2026-09-02) — startup, input stream, tap, multi-tap reset, expiry, audio,
-draw and clean shutdown all proven. The long-press A/B switch is the one
-gesture still unexercised: `POST /api/input` sends a single press with no
-duration, so a hold needs a real thumb. See `docs/verification.md` for exactly
-what has and hasn't been proven, and `docs/roadmap.md` for what's next.
+(2026-09-02) over both USB and Wi-Fi — startup, input stream, all three
+gestures (tap, hold-to-switch, triple-tap reset) by hand, expiry, audio, draw
+and clean shutdown all proven, with no draw failures or stream drops. What is
+left is soak time and tuning, not correctness. See `docs/verification.md` for
+exactly what has and hasn't been proven, and `docs/roadmap.md` for what's next.
 
 ## The hardware
 

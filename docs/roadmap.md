@@ -2,29 +2,29 @@
 
 ## Immediate next step
 
-**Hold the button.** The long-press A↔B switch is the only gesture never
-exercised — `POST /api/input` sends a single press with no duration, so it
-cannot be faked. Everything else in the cycle has now run against the device
-(see `docs/verification.md`): startup, stream, tap, multi-tap reset, expiry,
-audio, draw, clean shutdown.
+**Let it soak.** Every gesture and every stage of the cycle has now run against
+the device, by hand, over both USB and Wi-Fi (see `docs/verification.md`). What
+is left is time: clock drift over hours, reconnect after a real network drop,
+and what happens when the Bar sleeps. Leave it running for a working session and
+see whether the stream stays up.
 
-While you are there, confirm what the firmware does with the same press
-underneath the widget, and let it run for an hour or two to see whether the
-stream stays up.
+Two smaller things still uncharacterised, both needing a person at the device:
 
-**Before running over Wi-Fi**, note that `192.168.1.163` — the host in
-`config.json` — was not serving the API during verification; the Bar answered
-over USB at `10.0.4.20`. Re-check the Bar's LAN address and update `config.json`.
+- Whether any switch position changes what START does natively. No interference
+  showed up in the by-hand run, but the position was not recorded — so this is
+  narrowing, not closed.
+- Dismissing an expiry with a physical tap (expiry has only ever timed out on
+  its own).
 
-**Audio no longer needs worrying about.** It was the flagged risk and it works:
-upload and playback both returned OK, using the synthesised chime.
+**Tuning is now the interesting work**, not correctness — see item 1 below.
 
 ## Then, roughly in order of value
 
-1. **Tune the gesture timings on real hardware.** `longPressMs: 700` and
-   `multiTapWindowMs: 400` are reasoned defaults, not measured ones. Captured
-   taps ran 68–141 ms, so there is a lot of headroom — the window could likely
-   come down, cutting start/pause latency in `deferred` mode.
+1. **Tune the gesture timings.** `longPressMs: 700` and `multiTapWindowMs: 400`
+   both work in the hand now, but they are still reasoned defaults rather than
+   measured ones. Captured taps ran 68–141 ms, so there is a lot of headroom —
+   the window could likely come down, cutting start/pause latency in `deferred`
+   mode. This is the highest-value remaining change.
 2. **Decide on `tapMode`.** `deferred` and `immediate` are both implemented and
    the trade is real (see `docs/architecture.md`). Pick one after using both.
 3. ~~**Resolve `GET /api/screen`.**~~ **Done.** `?display=0` (integer) works;
