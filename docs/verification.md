@@ -8,6 +8,62 @@ HTTP API enabled with no auth token.
 
 ## Verified on hardware
 
+### A full run, end to end (2026-09-02)
+
+The assembled program was started against the Bar and driven through a complete
+cycle. Run over **USB (`10.0.4.20`)** — see the note below about `192.168.1.163`.
+Config was a scratch copy with `timers[0].seconds: 12`, `flashSeconds: 6`,
+`sound.repeat: 2` so expiry came round quickly; `config.json` was not touched.
+
+Startup, verbatim:
+
+```
+[bar] 10.0.4.20 firmware API 25.0.0
+[sound] assets/chime.wav not found, using the built-in synthesised chime
+[sound] uploaded chime.wav (47628 bytes) to app 'dual_timer'
+[stream] connected
+[ready] A=00:12 B=05:00 — tap start to start/pause, hold 700ms to switch, 3 taps to reset
+```
+
+Then, in order:
+
+| Step | Result |
+| --- | --- |
+| `POST /api/input?key=start` | `[gesture] tap -> running` — synthetic press decoded off the WebSocket and drove the state machine |
+| waited | `[expiry] timer A finished` at **12.078 s** after the tap |
+| expiry audio | **no** `[sound] playback failed` — `POST /api/audio/play` returned OK for both repeats |
+| three rapid `POST /api/input` | `[gesture] multi-tap -> reset` — exactly one reset, no stray taps |
+| `SIGINT` | `[shutdown] SIGINT`, display cleared, process exited 0 |
+
+Over the whole run there were **zero** `[draw] failed` lines — the per-second
+redraw at priority 95 held for the entire session.
+
+**Audio now works.** This was flagged as the most likely thing to be wrong. Both
+halves are proven: the headerless-PCM upload is accepted, and playback of an
+uploaded app asset returns OK. The synthesised chime was used (no `chime.wav`
+in `assets/`), so `generateChime()` produces something the firmware accepts.
+
+### The rendered widget, read back off the panel
+
+`GET /api/screen?display=0` (integer, not `front` — see `docs/busy-bar-api.md`)
+returns a frame grab. Decoding one mid-run, with timer A running:
+
+```
+  2 ..#.....................................................................
+  3 .#.#.....................####...####.....####...####....................
+  4 .###....................#....#.#....#...#....#.#....#...................
+ ...
+ 11 .........................####...####.....####...####....................
+ 15 #############################################...........................
+```
+
+The `A` label sits top-left in the tiny font, the time is large and centred, and
+the progress bar occupies the bottom row — the layout `render.ts` intends. Every
+lit pixel decoded to `3ba7ff`, exactly the configured `#3BA7FFFF` for timer A,
+so colour survives the round trip intact.
+
+This means layout changes can now be checked from a script instead of by eye.
+
 ### Physical button events reach the API
 
 A human tapped START three times and held it once, while a WebSocket client was
@@ -63,20 +119,32 @@ This confirms the element schema, the font names, the rectangle element, the
 
 ## Not yet verified
 
-- **A full run.** The program has never been started against the Bar and driven
-  through a complete cycle. Every piece is proven; the assembly is not.
-- **The gesture set on real hardware.** Tap / hold / triple-tap timings were
-  derived from a capture, not exercised through `GestureRecognizer` live.
-- **Audio.** The PCM format comes from busylib's ffmpeg arguments and the upload
-  and playback calls have never been made against the device. This is the most
-  likely thing to be wrong.
-- **Expiry behaviour.** Flash, LED notification colour and chime repeat are
-  untested end-to-end.
-- **How the firmware reacts to the same presses.** Events reach us, but whether
-  START also triggers device behaviour underneath the widget is unknown — and
-  whether that matters depends on which switch position the Bar is in.
-- **Long-run stability.** Reconnect logic, clock drift over hours, and whether
-  the widget survives the device sleeping have not been observed.
+- **The long-press switch gesture.** `POST /api/input` sends a *single key
+  press* — the spec has no duration and no separate press/release — so a hold
+  cannot be synthesised. Switching A↔B is the one gesture that still needs a
+  human thumb on the button.
+- **Real physical presses through the assembled program.** Button events were
+  captured from real presses earlier, and the gesture recogniser was driven by
+  synthetic ones; the two halves have not been joined. Whether the firmware also
+  acts on the same press underneath the widget remains open.
+- **Long-run stability.** The longest run so far is minutes. Reconnect
+  behaviour, clock drift over hours, and what happens when the device sleeps are
+  all unobserved. One reconnect was seen at shutdown (`code 1005`), which is the
+  expected close, not a fault.
+- **The Bar over Wi-Fi.** This run went over USB; the LAN address did not serve
+  HTTP (see below).
+
+## Environment note: `192.168.1.163` is not currently serving the API
+
+As of this run the configured host in `config.json` does not work:
+
+- `192.168.1.163` — pings (57 ms, MAC `c:fa:22:0:53:36`) but TCP 80 refuses.
+  The latency and the refusal suggest something else holds that address now.
+- `10.0.4.20` (USB) — fully working: `api_semver 25.0.0`, `openapi.yaml` 88146 B.
+
+`config.json` has been left pointing at `192.168.1.163`. Either re-check the
+Bar's Wi-Fi address and update it, or run over USB with `BUSY_TIMER_CONFIG`
+pointed at a config using `10.0.4.20`.
 
 ## How to verify the rest
 

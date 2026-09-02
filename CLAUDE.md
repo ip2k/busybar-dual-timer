@@ -9,9 +9,12 @@ physical button. Tap = start/pause, long press = switch timer A/B, triple tap =
 reset. Everything runs off-device against the Bar's local HTTP API; nothing is
 installed on the Bar itself.
 
-Status: **working, verified against real hardware, not yet run for a full
-session end-to-end.** See `docs/verification.md` for exactly what has and hasn't
-been proven, and `docs/roadmap.md` for what's next.
+Status: **working, and driven through a full cycle against real hardware**
+(2026-09-02) — startup, input stream, tap, multi-tap reset, expiry, audio,
+draw and clean shutdown all proven. The long-press A/B switch is the one
+gesture still unexercised: `POST /api/input` sends a single press with no
+duration, so a hold needs a real thumb. See `docs/verification.md` for exactly
+what has and hasn't been proven, and `docs/roadmap.md` for what's next.
 
 ## The hardware
 
@@ -107,6 +110,10 @@ smoke test meaningful. I/O belongs in `api.ts` and orchestration in `index.ts`.
 5. **Audio is headerless PCM despite the `.wav` name** — s16le, mono, 44.1 kHz.
    A real WAV file with a RIFF header is not what the firmware wants.
 6. **`/api/openapi.json` does not exist.** It's `/openapi.yaml` at the root.
+7. **`/api/screen` wants an integer.** `?display=0` (front) / `1` (back), not
+   `front`. Despite the `image/bmp` content type the body is **base64 text** of
+   raw 72×16 **BGR** pixels — no BMP header. Swap the byte order or your colours
+   come back reversed. This is how to check a layout without eyeballing the panel.
 
 ## Working style for this repo
 

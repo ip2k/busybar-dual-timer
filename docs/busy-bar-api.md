@@ -135,14 +135,14 @@ From the live spec. Unless noted, these are listed but untested here.
 | --- | --- | --- |
 | `/api/status/ws` | GET (upgrade) | **verified** — state + input stream |
 | `/api/display/draw` | POST, DELETE | **verified** — draw / clear |
-| `/api/assets/upload` | POST, DELETE | upload / delete app assets |
-| `/api/audio/play` | POST, DELETE | play / stop |
+| `/api/assets/upload` | POST, DELETE | **verified** — headerless PCM upload accepted |
+| `/api/audio/play` | POST, DELETE | **verified** — plays an uploaded app asset |
 | `/api/audio/volume` | GET, POST | |
 | `/api/display/brightness` | GET, POST | value or `auto` |
-| `/api/input` | POST | **simulates** a key press — see below |
+| `/api/input` | POST | **verified** — simulates a key press; see below |
 | `/api/busy/snapshot` | GET, PUT | built-in BUSY timer state |
 | `/api/busy/profiles/{slot}` | GET, PUT | built-in timer profiles |
-| `/api/screen` | GET | single frame grab; returned 400 in testing |
+| `/api/screen` | GET | **verified** — single frame grab; see below |
 | `/api/version` | GET | **verified** — `{"api_semver":"25.0.0"}` |
 | `/api/status`, `/api/status/{device,firmware,system,power}` | GET | |
 | `/api/storage/{write,read,list,remove,mkdir,rename,status}` | | `list` returned 400 with `?path=` |
@@ -163,6 +163,30 @@ From the live spec. Unless noted, these are listed but untested here.
 presses is the WebSocket. `BusyBarClient.sendInput()` wraps it; handy for
 driving the widget without touching the hardware.
 
+### `GET /api/screen` — frame grab (verified)
+
+`GET /api/screen?display=<0|1>` — `display` is an **integer**, `0` = front,
+`1` = back. `?display=front` is what returns 400.
+
+The response is `Content-Type: image/bmp`, but it is **not a BMP** — there is no
+BMP header. It is **base64 text** whose decoded bytes are raw, bottom-padded
+pixel data in **BGR order**, one byte per channel, no row padding:
+
+| | front (`display=0`) |
+| --- | --- |
+| Response body | 4608 base64 characters |
+| Decoded | 3456 bytes = 72 × 16 × 3 |
+| Layout | row-major from the top-left, 3 bytes/pixel |
+| Channel order | **B, G, R** — a drawn `#3BA7FF` reads back as `3b a7 ff` reversed, i.e. bytes `ff a7 3b` |
+
+So a drawn colour round-trips exactly, provided you swap the byte order. This
+was checked by drawing timer A (`#3BA7FFFF`) and reading the frame back: every
+lit pixel decoded to `3ba7ff` after the swap.
+
+This closes the loop for scripted visual checks — the widget layout (tiny label
+top-left, large centred time, progress bar on the bottom row) was confirmed from
+a frame grab rather than by eye.
+
 ### Auth
 
 `X-API-Token` header for local access when a token is set; the WebSocket takes
@@ -180,10 +204,6 @@ No code changes between them beyond the base URL.
 - **Stock asset names.** `GET /api/storage/list?path=/` returns 400 — the query
   parameter name is wrong or listing works differently. Without it, `stock_path`
   values for images and sounds are unknown.
-- **`GET /api/screen`.** Returned 400 with `?display=front`. The TypeScript
-  library types it as `display` being `Front = 0` / `Back = 1`, so it may want a
-  numeric value. Worth resolving — it would allow visually verifying a rendered
-  frame from a script.
 - **`{"enable": false}` on the WebSocket.** Only `true` has been tested. If it
   suppresses the once-a-second frame updates while still delivering input
   events, that's a worthwhile bandwidth win (`behavior.streamFrames`).
