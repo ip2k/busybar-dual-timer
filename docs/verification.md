@@ -88,9 +88,10 @@ what the widget meant it to. (The switch position during this run was not
 recorded, so a position-dependent interaction is not ruled out.)
 
 The swallowed release and the single-reset-from-three-taps are the two things
-most likely to go wrong with real finger timing, and both held. `longPressMs:
-700` and `multiTapWindowMs: 400` are now known to work in the hand, though they
-still have not been *tuned* — see `docs/roadmap.md`.
+most likely to go wrong with real finger timing, and both held. `longPressMs: 700`
+is now **confirmed by feel** — it reads as deliberate without dragging, and
+should be left alone. `multiTapWindowMs: 400` works but is untuned, and in
+`deferred` mode it sets the start/pause lag directly; see `docs/roadmap.md`.
 
 Frame grabs confirmed each state on the panel: after the hold the label read `B`
 with `05:00` in `33d17a`, exactly the configured `#33D17AFF`, and the paused

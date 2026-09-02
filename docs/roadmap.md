@@ -20,11 +20,20 @@ Two smaller things still uncharacterised, both needing a person at the device:
 
 ## Then, roughly in order of value
 
-1. **Tune the gesture timings.** `longPressMs: 700` and `multiTapWindowMs: 400`
-   both work in the hand now, but they are still reasoned defaults rather than
-   measured ones. Captured taps ran 68–141 ms, so there is a lot of headroom —
-   the window could likely come down, cutting start/pause latency in `deferred`
-   mode. This is the highest-value remaining change.
+1. **Tune `multiTapWindowMs`.** `longPressMs: 700` is **settled** — confirmed by
+   feel on hardware, it reads as deliberate without dragging. Leave it.
+
+   `multiTapWindowMs: 400` is the one still worth moving. In `deferred` mode it
+   is not just a recogniser detail: a single tap cannot be known to be single
+   until the window closes, so **400 ms is exactly the start/pause lag**. The
+   only captured inter-tap data is from deliberate slow taps ~1.1 s apart, which
+   says nothing about how fast a real triple-tap runs — so this needs measuring
+   before it is lowered, not guessing. Log raw press timestamps during a few
+   real triple-taps, take the widest gap, add margin.
+
+   The alternative is `tapMode: "immediate"`, which removes the lag entirely at
+   the cost of flickering through intermediate states during a triple tap. Same
+   end state either way; see `docs/architecture.md`.
 2. **Decide on `tapMode`.** `deferred` and `immediate` are both implemented and
    the trade is real (see `docs/architecture.md`). Pick one after using both.
 3. ~~**Resolve `GET /api/screen`.**~~ **Done.** `?display=0` (integer) works;
