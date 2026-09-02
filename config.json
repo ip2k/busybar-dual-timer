@@ -15,18 +15,21 @@
   ],
 
   "gestures": {
-    "button": "start",
-    "longPressMs": 700,
-    "multiTapWindowMs": 400,
-    "tapMode": "deferred",
-    "resetTapCount": 3
+    "toggleButton": "start",
+    "resetButton": "back",
+    "switchButton": "ok",
+    "coarseStepSeconds": 60,
+    "fineStepSeconds": 5,
+    "ramp": { "fastGapMs": 90, "fastMultiplier": 5, "mediumGapMs": 250, "mediumMultiplier": 2 },
+    "maxSeconds": 86400
   },
 
   "behavior": {
     "resetOnSwitch": false,
     "autoAdvanceOnExpiry": false,
     "streamFrames": true,
-    "startPaused": true
+    "startPaused": true,
+    "maxEventsPerMessage": 8
   },
 
   "expiry": {

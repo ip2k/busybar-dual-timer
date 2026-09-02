@@ -3,7 +3,6 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export type ButtonName = 'ok' | 'back' | 'start';
-export type TapMode = 'deferred' | 'immediate';
 export type SoundMode = 'asset' | 'stock' | 'none';
 
 export interface TimerConfig {
@@ -17,17 +16,35 @@ export interface Config {
   app: { name: string; priority: number };
   timers: [TimerConfig, TimerConfig];
   gestures: {
-    button: ButtonName;
-    longPressMs: number;
-    multiTapWindowMs: number;
-    tapMode: TapMode;
-    resetTapCount: number;
+    toggleButton: ButtonName;
+    resetButton: ButtonName;
+    /** Pressing the dial in; on this hardware that is the `ok` button. */
+    switchButton: ButtonName;
+    /** Step for a plain dial turn. */
+    coarseStepSeconds: number;
+    /** Step for a turn with the dial held down. */
+    fineStepSeconds: number;
+    /** Spinning faster multiplies the step. */
+    ramp: {
+      fastGapMs: number;
+      fastMultiplier: number;
+      mediumGapMs: number;
+      mediumMultiplier: number;
+    };
+    /** Upper bound the dial can wind a timer to. */
+    maxSeconds: number;
   };
   behavior: {
     resetOnSwitch: boolean;
     autoAdvanceOnExpiry: boolean;
     streamFrames: boolean;
     startPaused: boolean;
+    /**
+     * Drop a single stream message carrying more input events than this. The
+     * device has been seen replaying a large backlog at once, which would fire
+     * dozens of toggles and resets. 0 disables the guard.
+     */
+    maxEventsPerMessage: number;
   };
   expiry: {
     flashSeconds: number;
@@ -54,17 +71,22 @@ const DEFAULTS: Config = {
     { label: 'B', seconds: 300, color: '#33D17AFF' },
   ],
   gestures: {
-    button: 'start',
-    longPressMs: 700,
-    multiTapWindowMs: 400,
-    tapMode: 'deferred',
-    resetTapCount: 3,
+    toggleButton: 'start',
+    resetButton: 'back',
+    switchButton: 'ok',
+    coarseStepSeconds: 60,
+    fineStepSeconds: 5,
+    // Measured on hardware: a casual spin is ~600 ms between detents, a fast one
+    // can be 15 ms. These thresholds sit either side of a deliberate spin.
+    ramp: { fastGapMs: 90, fastMultiplier: 5, mediumGapMs: 250, mediumMultiplier: 2 },
+    maxSeconds: 24 * 60 * 60,
   },
   behavior: {
     resetOnSwitch: false,
     autoAdvanceOnExpiry: false,
     streamFrames: true,
     startPaused: true,
+    maxEventsPerMessage: 8,
   },
   expiry: {
     flashSeconds: 10,
@@ -108,11 +130,26 @@ function validate(cfg: Config): void {
     cfg.app.priority >= 1 && cfg.app.priority <= 100,
     'app.priority must be 1-100 (system apps sit at 10, an active BUSY session at 90)',
   );
-  assert(['ok', 'back', 'start'].includes(cfg.gestures.button), "gestures.button must be 'ok', 'back' or 'start'");
-  assert(['deferred', 'immediate'].includes(cfg.gestures.tapMode), "gestures.tapMode must be 'deferred' or 'immediate'");
-  assert(cfg.gestures.longPressMs > 100, 'gestures.longPressMs must be > 100');
-  assert(cfg.gestures.multiTapWindowMs > 50, 'gestures.multiTapWindowMs must be > 50');
-  assert(cfg.gestures.resetTapCount >= 2, 'gestures.resetTapCount must be >= 2');
+  const buttons = ['ok', 'back', 'start'];
+  const bound = [
+    ['toggleButton', cfg.gestures.toggleButton],
+    ['resetButton', cfg.gestures.resetButton],
+    ['switchButton', cfg.gestures.switchButton],
+  ] as const;
+  for (const [key, value] of bound) {
+    assert(buttons.includes(value), `gestures.${key} must be 'ok', 'back' or 'start'`);
+  }
+  assert(
+    new Set(bound.map(([, value]) => value)).size === bound.length,
+    'gestures.toggleButton, resetButton and switchButton must all be different buttons',
+  );
+  assert(cfg.gestures.coarseStepSeconds > 0, 'gestures.coarseStepSeconds must be > 0');
+  assert(cfg.gestures.fineStepSeconds > 0, 'gestures.fineStepSeconds must be > 0');
+  assert(cfg.gestures.maxSeconds > 0, 'gestures.maxSeconds must be > 0');
+  assert(cfg.behavior.maxEventsPerMessage >= 0, 'behavior.maxEventsPerMessage must be >= 0 (0 disables the guard)');
+  const { ramp } = cfg.gestures;
+  assert(ramp.fastGapMs > 0 && ramp.mediumGapMs > ramp.fastGapMs, 'gestures.ramp.mediumGapMs must be > fastGapMs > 0');
+  assert(ramp.fastMultiplier >= 1 && ramp.mediumMultiplier >= 1, 'gestures.ramp multipliers must be >= 1');
   assert(HEX_RGBA.test(cfg.expiry.ledColor), 'expiry.ledColor must be #RRGGBBAA');
   assert(['asset', 'stock', 'none'].includes(cfg.expiry.sound.mode), "expiry.sound.mode must be 'asset', 'stock' or 'none'");
   if (cfg.expiry.sound.mode === 'stock') {

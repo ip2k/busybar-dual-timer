@@ -1,4 +1,4 @@
-import { parseInputEvents, type InputEvent } from './proto.ts';
+import { parseState, type InputEvent } from './proto.ts';
 
 export interface DisplayElementBase {
   id: string;
@@ -108,7 +108,8 @@ export class BusyBarClient {
 }
 
 export interface StreamHandlers {
-  onInput: (event: InputEvent) => void;
+  /** `atMs` is the device's own clock for this message, or 0 if absent. */
+  onInput: (event: InputEvent, atMs: number) => void;
   onOpen?: () => void;
   onClose?: (reason: string) => void;
 }
@@ -125,12 +126,12 @@ export class InputStream {
 
   private readonly host: string;
   private readonly handlers: StreamHandlers;
-  private readonly options: { apiToken?: string | null; enableFrames?: boolean };
+  private readonly options: { apiToken?: string | null; enableFrames?: boolean; maxEventsPerMessage?: number };
 
   constructor(
     host: string,
     handlers: StreamHandlers,
-    options: { apiToken?: string | null; enableFrames?: boolean } = {},
+    options: { apiToken?: string | null; enableFrames?: boolean; maxEventsPerMessage?: number } = {},
   ) {
     this.host = host;
     this.handlers = handlers;
@@ -172,9 +173,22 @@ export class InputStream {
     socket.onmessage = (event: MessageEvent) => {
       if (typeof event.data === 'string') return;
       try {
-        for (const input of parseInputEvents(new Uint8Array(event.data as ArrayBuffer))) {
-          this.handlers.onInput(input);
+        const { timestampMs, events } = parseState(new Uint8Array(event.data as ArrayBuffer));
+
+        // The device has been seen delivering a large backlog of historical
+        // input in a single message. Acting on it would fire dozens of
+        // toggles/resets at once, so a burst that large is treated as a replay
+        // and dropped. In normal use each input arrives in its own message.
+        const limit = this.options.maxEventsPerMessage ?? 8;
+        if (limit > 0 && events.length > limit) {
+          console.warn(
+            `[stream] dropped a burst of ${events.length} input events in one message ` +
+              '(looks like a replayed backlog, not something a person did)',
+          );
+          return;
         }
+
+        for (const input of events) this.handlers.onInput(input, timestampMs);
       } catch (error) {
         console.warn('[stream] failed to decode message:', (error as Error).message);
       }

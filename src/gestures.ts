@@ -1,37 +1,55 @@
 import type { ButtonAction, ButtonName } from './proto.ts';
-import type { TapMode } from './config.ts';
 
 export type Gesture =
-  | { kind: 'tap'; count: number }
-  | { kind: 'longPress' }
-  | { kind: 'reset' };
+  | { kind: 'toggle' }
+  | { kind: 'reset' }
+  | { kind: 'switch' }
+  | { kind: 'adjust'; deltaMs: number };
+
+export interface RampOptions {
+  fastGapMs: number;
+  fastMultiplier: number;
+  mediumGapMs: number;
+  mediumMultiplier: number;
+}
 
 export interface GestureOptions {
-  button: ButtonName;
-  longPressMs: number;
-  multiTapWindowMs: number;
-  tapMode: TapMode;
-  resetTapCount: number;
+  toggleButton: ButtonName;
+  resetButton: ButtonName;
+  /** Pressing the dial in. On this hardware that arrives as the `ok` button. */
+  switchButton: ButtonName;
+  coarseStepSeconds: number;
+  fineStepSeconds: number;
+  ramp: RampOptions;
 }
 
 /**
- * Turns raw press/release pairs into tap / long-press / multi-tap gestures.
+ * Maps the Bar's physical controls onto timer actions.
  *
- * A long press fires the moment the threshold is crossed while the button is
- * still down, so the Bar reacts under your thumb rather than on release; the
- * release that follows is then swallowed.
+ *   START            start / pause
+ *   BACK             reset
+ *   dial click       switch A <-> B
+ *   dial spin        adjust by `coarseStepSeconds`
+ *   click + spin     adjust by `fineStepSeconds`
  *
- * Taps are counted inside a rolling window. In `deferred` mode nothing happens
- * until the window closes, which costs `multiTapWindowMs` of latency but keeps
- * a triple-tap clean. In `immediate` mode each tap acts as it lands: tap 1
- * toggles, tap 2 toggles back, tap 3 resets — same end state, no latency.
+ * Every action fires on the press itself. Because no control is overloaded with
+ * a multi-tap, there is nothing to disambiguate and therefore no window to wait
+ * out — start/pause is instant. The previous mapping put start, switch and reset
+ * all on START, which cost `multiTapWindowMs` of latency on every tap.
+ *
+ * The one ambiguity left is the dial: a click means "switch", but a click is
+ * also how you hold it to get fine steps. So the switch is emitted on *release*
+ * and suppressed if the dial turned while it was down — the same
+ * swallow-the-release trick the old long-press used.
+ *
+ * Spinning fast multiplies the step (see `RampOptions`); a detent can arrive as
+ * little as 15 ms after the last one, so without ramping a long adjustment is a
+ * lot of wrist.
  */
 export class GestureRecognizer {
-  private pressedAt: number | null = null;
-  private longPressTimer: NodeJS.Timeout | null = null;
-  private longPressFired = false;
-  private tapCount = 0;
-  private tapTimer: NodeJS.Timeout | null = null;
+  private switchDown = false;
+  private spunWhileDown = false;
+  private lastDetentAt = 0;
 
   private readonly options: GestureOptions;
   private readonly emit: (gesture: Gesture) => void;
@@ -42,72 +60,61 @@ export class GestureRecognizer {
   }
 
   handle(button: ButtonName, action: ButtonAction): void {
-    if (button !== this.options.button) return;
-    if (action === 'press') this.onPress();
-    else this.onRelease();
+    const { toggleButton, resetButton, switchButton } = this.options;
+
+    if (action === 'press') {
+      if (button === toggleButton) this.emit({ kind: 'toggle' });
+      else if (button === resetButton) this.emit({ kind: 'reset' });
+      else if (button === switchButton) {
+        this.switchDown = true;
+        this.spunWhileDown = false;
+      }
+      return;
+    }
+
+    if (button === switchButton && this.switchDown) {
+      this.switchDown = false;
+      // A turn while held meant "fine adjust", not "switch".
+      if (!this.spunWhileDown) this.emit({ kind: 'switch' });
+      this.spunWhileDown = false;
+    }
+  }
+
+  /**
+   * One detent of the dial. `delta` is +/-1.
+   *
+   * `atMs` should be the device's own clock for the message that carried this
+   * event. Ramping keys off the interval between detents, and on a laggy or
+   * spotty network local arrival time is a property of the *network*, not of
+   * how fast the dial was turned: a stall that releases three buffered detents
+   * at once would look like a very fast spin and ramp to the largest multiplier,
+   * jumping the timer by a wild amount. The device clock is immune to that.
+   *
+   * Falls back to local time when the device sends no timestamp, and refuses to
+   * ramp on a gap that went backwards (clock step, or events out of order).
+   */
+  handleEncoder(delta: number, atMs = 0): void {
+    if (delta === 0) return;
+    const now = atMs > 0 ? atMs : Date.now();
+    const gap = now >= this.lastDetentAt ? now - this.lastDetentAt : Number.POSITIVE_INFINITY;
+    this.lastDetentAt = now;
+
+    if (this.switchDown) this.spunWhileDown = true;
+
+    const { ramp, coarseStepSeconds, fineStepSeconds } = this.options;
+    const multiplier =
+      gap < ramp.fastGapMs
+        ? ramp.fastMultiplier
+        : gap < ramp.mediumGapMs
+          ? ramp.mediumMultiplier
+          : 1;
+
+    const stepSeconds = this.switchDown ? fineStepSeconds : coarseStepSeconds;
+    this.emit({ kind: 'adjust', deltaMs: delta * stepSeconds * multiplier * 1000 });
   }
 
   dispose(): void {
-    if (this.longPressTimer) clearTimeout(this.longPressTimer);
-    if (this.tapTimer) clearTimeout(this.tapTimer);
-    this.longPressTimer = null;
-    this.tapTimer = null;
-  }
-
-  private onPress(): void {
-    if (this.pressedAt !== null) return; // duplicate press, ignore
-    this.pressedAt = Date.now();
-    this.longPressFired = false;
-    this.longPressTimer = setTimeout(() => {
-      this.longPressFired = true;
-      this.longPressTimer = null;
-      this.flushTaps(); // a hold ends any tap run in progress
-      this.emit({ kind: 'longPress' });
-    }, this.options.longPressMs);
-  }
-
-  private onRelease(): void {
-    if (this.pressedAt === null) return;
-    this.pressedAt = null;
-    if (this.longPressTimer) {
-      clearTimeout(this.longPressTimer);
-      this.longPressTimer = null;
-    }
-    if (this.longPressFired) {
-      this.longPressFired = false;
-      return;
-    }
-    this.registerTap();
-  }
-
-  private registerTap(): void {
-    this.tapCount += 1;
-
-    if (this.options.tapMode === 'immediate') {
-      const count = this.tapCount;
-      this.emit(count >= this.options.resetTapCount ? { kind: 'reset' } : { kind: 'tap', count });
-      if (count >= this.options.resetTapCount) {
-        this.tapCount = 0;
-        if (this.tapTimer) clearTimeout(this.tapTimer);
-        this.tapTimer = null;
-        return;
-      }
-    }
-
-    if (this.tapTimer) clearTimeout(this.tapTimer);
-    this.tapTimer = setTimeout(() => {
-      this.tapTimer = null;
-      const count = this.tapCount;
-      this.tapCount = 0;
-      if (this.options.tapMode === 'deferred' && count > 0) {
-        this.emit(count >= this.options.resetTapCount ? { kind: 'reset' } : { kind: 'tap', count });
-      }
-    }, this.options.multiTapWindowMs);
-  }
-
-  private flushTaps(): void {
-    if (this.tapTimer) clearTimeout(this.tapTimer);
-    this.tapTimer = null;
-    this.tapCount = 0;
+    this.switchDown = false;
+    this.spunWhileDown = false;
   }
 }

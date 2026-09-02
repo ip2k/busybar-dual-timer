@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 
 import { parseInputEvents } from '../src/proto.ts';
 import { GestureRecognizer, type Gesture } from '../src/gestures.ts';
+import { parseState } from '../src/proto.ts';
 import { DualTimer } from '../src/timers.ts';
 import { formatDuration, buildPayload } from '../src/render.ts';
 import { generateChime } from '../src/chime.ts';
@@ -32,37 +33,111 @@ assert.deepEqual(decode(Buffer.from([0x12, 0x04, 0x5a, 0x02, 0x0a, 0x00]).toStri
 ]);
 console.log('proto: ok');
 
-// 4. Gestures: three quick taps must resolve to a reset, a hold to a long press.
+// 3b. parseState exposes the device clock, which is what makes ramping robust
+//     to a laggy link.
+{
+  const withTimestamp = Buffer.from([
+    0x09, 0xed, 0x2a, 0x6c, 0x64, 0xa0, 0x01, 0x00, 0x00, // fixed64 timestamp
+    0x12, 0x06, 0x5a, 0x04, 0x1a, 0x02, 0x08, 0x02, // encoder +1
+  ]);
+  const state = parseState(new Uint8Array(withTimestamp));
+  assert.deepEqual(state.events, [{ kind: 'encoder', delta: 1 }]);
+  assert.ok(state.timestampMs > 1_700_000_000_000, `device clock looked wrong: ${state.timestampMs}`);
+  assert.ok(Number.isSafeInteger(state.timestampMs));
+}
+
+// 4. Gestures: the mapping is START=toggle, BACK=reset, dial click=switch,
+//    dial turn=coarse adjust, click+turn=fine adjust (and no switch on release).
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const seen: Gesture[] = [];
 const recognizer = new GestureRecognizer(
-  { button: 'start', longPressMs: 300, multiTapWindowMs: 200, tapMode: 'deferred', resetTapCount: 3 },
+  {
+    toggleButton: 'start',
+    resetButton: 'back',
+    switchButton: 'ok',
+    coarseStepSeconds: 60,
+    fineStepSeconds: 5,
+    ramp: { fastGapMs: 90, fastMultiplier: 5, mediumGapMs: 250, mediumMultiplier: 2 },
+  },
   (gesture) => seen.push(gesture),
 );
 
-for (let i = 0; i < 3; i++) {
-  recognizer.handle('start', 'press');
-  await sleep(60);
-  recognizer.handle('start', 'release');
-  await sleep(60);
-}
-await sleep(300);
-assert.deepEqual(seen, [{ kind: 'reset' }], `expected one reset, got ${JSON.stringify(seen)}`);
+// Buttons act on the press, with no window to wait out.
+recognizer.handle('start', 'press');
+assert.deepEqual(seen, [{ kind: 'toggle' }], 'START must toggle immediately on press');
+recognizer.handle('start', 'release');
+assert.deepEqual(seen, [{ kind: 'toggle' }], 'the release must not act again');
 
 seen.length = 0;
-recognizer.handle('start', 'press');
-await sleep(400);
-assert.deepEqual(seen, [{ kind: 'longPress' }]);
-recognizer.handle('start', 'release');
-await sleep(300);
-assert.deepEqual(seen, [{ kind: 'longPress' }], 'release after a hold must not also register a tap');
+recognizer.handle('back', 'press');
+recognizer.handle('back', 'release');
+assert.deepEqual(seen, [{ kind: 'reset' }]);
 
+// A clean dial click switches timers.
 seen.length = 0;
-recognizer.handle('start', 'press');
-await sleep(50);
-recognizer.handle('start', 'release');
+recognizer.handle('ok', 'press');
+recognizer.handle('ok', 'release');
+assert.deepEqual(seen, [{ kind: 'switch' }]);
+
+// A plain turn is a coarse step; slow enough not to trip the ramp.
+seen.length = 0;
 await sleep(300);
-assert.deepEqual(seen, [{ kind: 'tap', count: 1 }]);
+recognizer.handleEncoder(1);
+await sleep(300);
+recognizer.handleEncoder(-1);
+assert.deepEqual(seen, [
+  { kind: 'adjust', deltaMs: 60_000 },
+  { kind: 'adjust', deltaMs: -60_000 },
+]);
+
+// Turning while the dial is held gives fine steps AND swallows the switch.
+seen.length = 0;
+recognizer.handle('ok', 'press');
+await sleep(300);
+recognizer.handleEncoder(1);
+recognizer.handle('ok', 'release');
+assert.deepEqual(seen, [{ kind: 'adjust', deltaMs: 5_000 }], 'a turn while held must not also switch timers');
+
+// Spinning fast multiplies the step.
+seen.length = 0;
+await sleep(300);
+recognizer.handleEncoder(1); // slow: x1
+recognizer.handleEncoder(1); // immediately after: fast, x5
+assert.deepEqual(seen, [
+  { kind: 'adjust', deltaMs: 60_000 },
+  { kind: 'adjust', deltaMs: 300_000 },
+]);
+// Network robustness: ramping must key off the DEVICE clock, not arrival time.
+// Two detents the user turned 800 ms apart, delivered back-to-back by a laggy
+// link, must still be a x1 step each -- not a ramped jump.
+seen.length = 0;
+recognizer.handleEncoder(1, 1_000_000_000_000);
+recognizer.handleEncoder(1, 1_000_000_000_800); // 800 ms apart on the device
+assert.deepEqual(
+  seen,
+  [
+    { kind: 'adjust', deltaMs: 60_000 },
+    { kind: 'adjust', deltaMs: 60_000 },
+  ],
+  'a network stall must not be mistaken for a fast spin',
+);
+
+// The same two arrivals WITHOUT device timestamps do ramp -- which is exactly
+// the failure mode the device clock exists to prevent.
+seen.length = 0;
+await sleep(300);
+recognizer.handleEncoder(1);
+recognizer.handleEncoder(1);
+assert.equal(seen[1] !== undefined && (seen[1] as { deltaMs: number }).deltaMs, 300_000);
+
+// A device clock that steps backwards must not ramp either.
+seen.length = 0;
+recognizer.handleEncoder(1, 1_000_000_000_000);
+recognizer.handleEncoder(1, 999_999_999_000);
+assert.deepEqual(seen, [
+  { kind: 'adjust', deltaMs: 60_000 },
+  { kind: 'adjust', deltaMs: 60_000 },
+]);
 recognizer.dispose();
 console.log('gestures: ok');
 
@@ -101,6 +176,43 @@ await sleep(2100);
 assert.equal(timer.checkExpiry(), true);
 assert.equal(timer.currentPhase, 'expired');
 assert.equal(timer.checkExpiry(), false, 'expiry fires exactly once');
+
+// 5b. Dial adjustment.
+const dial = new DualTimer([
+  { label: 'A', seconds: 60, color: '#3BA7FFFF' },
+  { label: 'B', seconds: 300, color: '#33D17AFF' },
+]);
+
+// While idle, adjusting sets the timer's length: remaining and total move together.
+assert.equal(dial.adjust(60_000), 120_000);
+let snap = dial.snapshot();
+assert.equal(snap.remainingMs, 120_000);
+assert.equal(snap.totalMs, 120_000, 'idle adjust must move the length too, so the bar reads full');
+assert.equal(snap.fraction, 1);
+
+// It clamps at zero rather than going negative.
+assert.equal(dial.adjust(-600_000), 0);
+assert.equal(dial.snapshot().totalMs, 0);
+
+// And at the ceiling.
+assert.equal(dial.adjust(999_000_000, 3_600_000), 3_600_000, 'must clamp to maxMs');
+
+// Adjusting only touches the active timer.
+dial.adjust(-3_599_000); // back to 1000ms
+dial.switchTimer(false);
+assert.equal(dial.snapshot().label, 'B');
+assert.equal(dial.snapshot().remainingMs, 300_000, 'the other timer must be untouched');
+
+// While running, adjusting extends the countdown in progress and keeps running.
+dial.reset();
+dial.toggle();
+assert.equal(dial.currentPhase, 'running');
+const extended = dial.adjust(60_000);
+assert.ok(extended > 300_000 && extended <= 360_000, `extended to ${extended}ms`);
+assert.equal(dial.currentPhase, 'running', 'adjusting must not pause a running timer');
+assert.ok(dial.snapshot().fraction <= 1, 'fraction must never exceed 1 after extending');
+await sleep(120);
+assert.ok(dial.snapshot().remainingMs < extended, 'it must still be draining after an adjust');
 console.log('timers: ok');
 
 // 6. Rendering stays inside the 72x16 panel and formats sanely.

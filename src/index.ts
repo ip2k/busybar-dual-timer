@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { BusyBarClient, InputStream } from './api.ts';
+import { monotonicMs } from './clock.ts';
 import { generateChime } from './chime.ts';
 import { loadConfig, PROJECT_ROOT, type Config } from './config.ts';
 import { GestureRecognizer, type Gesture } from './gestures.ts';
@@ -38,12 +39,13 @@ class DualTimerApp {
     this.timer = new DualTimer(config.timers);
     this.gestures = new GestureRecognizer(config.gestures, (gesture) => this.onGesture(gesture));
     this.stream = new InputStream(config.device.host, {
-      onInput: (event) => this.onInput(event),
+      onInput: (event, atMs) => this.onInput(event, atMs),
       onOpen: () => log('[stream] connected'),
       onClose: (reason) => log(`[stream] disconnected (${reason}), reconnecting`),
     }, {
       apiToken: config.device.apiToken,
       enableFrames: config.behavior.streamFrames,
+      maxEventsPerMessage: config.behavior.maxEventsPerMessage,
     });
   }
 
@@ -60,10 +62,11 @@ class DualTimerApp {
     await this.render(true);
 
     const [a, b] = this.config.timers;
+    const g = this.config.gestures;
     log(
       `[ready] ${a.label}=${formatDuration(a.seconds * 1000)} ${b.label}=${formatDuration(b.seconds * 1000)} — ` +
-        `tap ${this.config.gestures.button} to start/pause, hold ${this.config.gestures.longPressMs}ms to switch, ` +
-        `${this.config.gestures.resetTapCount} taps to reset`,
+        `${g.toggleButton} start/pause · ${g.resetButton} reset · dial click switches · ` +
+        `dial turn ±${g.coarseStepSeconds}s · hold+turn ±${g.fineStepSeconds}s`,
     );
   }
 
@@ -100,9 +103,13 @@ class DualTimerApp {
     }
   }
 
-  private onInput(event: InputEvent): void {
+  private onInput(event: InputEvent, atMs: number): void {
     if (event.kind === 'button') {
       this.gestures.handle(event.button, event.action);
+      return;
+    }
+    if (event.kind === 'encoder') {
+      this.gestures.handleEncoder(event.delta, atMs);
       return;
     }
     if (event.kind === 'switch') {
@@ -116,24 +123,32 @@ class DualTimerApp {
   private onGesture(gesture: Gesture): void {
     if (this.timer.currentPhase === 'expired') {
       this.dismissExpiry();
-      if (gesture.kind === 'tap') return; // that tap only silenced the alarm
+      if (gesture.kind === 'toggle') return; // that press only silenced the alarm
     }
 
     switch (gesture.kind) {
-      case 'tap':
+      case 'toggle':
         this.timer.toggle();
-        log(`[gesture] tap -> ${this.timer.currentPhase}`);
+        log(`[gesture] start -> ${this.timer.currentPhase}`);
         break;
-      case 'longPress': {
+      case 'switch': {
         this.timer.switchTimer(this.config.behavior.resetOnSwitch);
         const snapshot = this.timer.snapshot();
-        log(`[gesture] hold -> timer ${snapshot.label} (${formatDuration(snapshot.remainingMs)})`);
+        log(`[gesture] dial click -> timer ${snapshot.label} (${formatDuration(snapshot.remainingMs)})`);
         break;
       }
       case 'reset':
         this.timer.reset();
-        log('[gesture] multi-tap -> reset');
+        log('[gesture] back -> reset');
         break;
+      case 'adjust': {
+        const now = this.timer.adjust(gesture.deltaMs, this.config.gestures.maxSeconds * 1000);
+        const sign = gesture.deltaMs >= 0 ? '+' : '-';
+        log(`[gesture] dial ${sign}${formatDuration(Math.abs(gesture.deltaMs))} -> ${formatDuration(now)}`);
+        // Deliberately no immediate render: a fast spin emits detents ~15 ms
+        // apart and the tick redraws at TICK_MS anyway, which rate-limits us.
+        return;
+      }
     }
     void this.render();
   }
@@ -148,14 +163,14 @@ class DualTimerApp {
     if (this.timer.checkExpiry()) this.onExpired();
 
     if (this.timer.currentPhase === 'expired' && this.expiryStartedAt !== null) {
-      const elapsed = Date.now() - this.expiryStartedAt;
+      const elapsed = monotonicMs() - this.expiryStartedAt;
       const { sound } = this.config.expiry;
       if (
         this.soundSource &&
         this.soundsPlayed < sound.repeat &&
-        Date.now() - this.lastSoundAt >= sound.repeatEveryMs
+        monotonicMs() - this.lastSoundAt >= sound.repeatEveryMs
       ) {
-        this.lastSoundAt = Date.now();
+        this.lastSoundAt = monotonicMs();
         this.soundsPlayed += 1;
         this.client.playAudio(this.config.app.name, this.soundSource).catch((error) => {
           log('[sound] playback failed:', (error as Error).message);
@@ -177,7 +192,7 @@ class DualTimerApp {
   private onExpired(): void {
     const snapshot = this.timer.snapshot();
     log(`[expiry] timer ${snapshot.label} finished`);
-    this.expiryStartedAt = Date.now();
+    this.expiryStartedAt = monotonicMs();
     this.soundsPlayed = 0;
     this.lastSoundAt = 0;
   }
@@ -186,9 +201,9 @@ class DualTimerApp {
     const phase = this.timer.currentPhase;
     if (phase === 'expired') {
       const period = 1000 / Math.max(1, this.config.expiry.flashHz);
-      return Math.floor(Date.now() / (period / 2)) % 2 === 0;
+      return Math.floor(monotonicMs() / (period / 2)) % 2 === 0;
     }
-    return Math.floor(Date.now() / 500) % 2 === 0;
+    return Math.floor(monotonicMs() / 500) % 2 === 0;
   }
 
   private async render(force = false): Promise<void> {

@@ -45,27 +45,81 @@ The trade is that we hand-maintain a decoder for a schema we don't own. It's
 frames. If the schema grows in ways we care about, revisit — the schemas live
 at https://github.com/busy-app/busybar-protobuf.
 
-### `gestures.ts` — long press fires on threshold, not release
+### `gestures.ts` — one control, one job
 
-Short tap, long press and triple tap are not device concepts. The device gives
-you PRESS and RELEASE; everything else is timing.
+The device gives you PRESS and RELEASE on three buttons, plus a dial that
+reports rotation as `±1` per detent. Everything else is our interpretation.
 
-A long press fires the moment `longPressMs` elapses while the button is still
-down, so the Bar reacts under your thumb rather than waiting for you to let go.
-The release that follows is then swallowed so it doesn't also register as a tap.
+The mapping spreads the work across the hardware instead of overloading one
+button:
 
-Multi-tap is the awkward one: you cannot know a tap is a *single* tap until the
-window closes. Hence two modes:
+| Control | Action |
+| --- | --- |
+| START | start / pause |
+| BACK | reset |
+| dial click | switch A ↔ B |
+| dial turn | adjust by `coarseStepSeconds` (default 60 s) |
+| dial click + turn | adjust by `fineStepSeconds` (default 5 s) |
 
-- `deferred` — wait out `multiTapWindowMs`, act on the final count. Correct, but
-  start/pause lags ~400 ms.
-- `immediate` — act on each tap as it lands. Tap 1 toggles, tap 2 toggles back,
-  tap 3 resets. Identical end state, no latency, at the cost of the display
-  flickering through intermediate states during a triple tap.
+**Everything fires on the press.** That is the whole point of the layout. An
+earlier version put start, switch and reset all on START, which meant a tap
+could not be acted on until a multi-tap window closed — 400 ms of latency on
+every start/pause, or a display that flickered through intermediate states.
+Because nothing is overloaded now, there is nothing to disambiguate and no
+window to wait out. The `tapMode` / `multiTapWindowMs` / `longPressMs` trade-off
+that used to live here is simply gone.
 
-There is no third option that is both instant and unambiguous. If the latency
-matters more than the flicker, or vice versa, that's a config change, not a
-code change.
+One ambiguity remains, and it is unavoidable: a dial click means "switch", but
+holding the dial is also how you get fine steps. So the switch is emitted on
+*release*, and suppressed if the dial turned while it was down. That is the same
+swallow-the-release trick the old long press used, and it is why click-and-spin
+does not also flip timers.
+
+Fast spins ramp. Detents can arrive 15 ms apart (measured), so a plain 1-step
+mapping would make winding a timer to 45 minutes a lot of wrist. The gap between
+detents picks a multiplier — see `gestures.ramp`. Set both multipliers to 1 to
+turn ramping off.
+
+Adjustment deliberately does **not** redraw on each detent. It changes state and
+lets the next tick draw, which rate-limits the display to `TICK_MS` no matter how
+fast the dial spins.
+
+### Behaviour on a laggy or spotty network
+
+The countdown itself never touches the network. `timers.ts` is driven by a local
+clock, so packet loss, a stalled socket or a full disconnect cannot make a timer
+drift, pause or skip — the display just stops updating until the link is back.
+That is the single most important property here, and it comes free from keeping
+`timers.ts` pure.
+
+Three things did need explicit care:
+
+**Never measure an interval with arrival time.** Dial ramping keys off the gap
+between detents. If that gap is measured locally, a Wi-Fi stall that releases
+three buffered detents at once makes them look 5 ms apart, ramps to the largest
+multiplier and jumps the timer by a wild amount. Every `State` message carries
+the device's own clock, so `parseState` returns it and the ramp uses that
+instead. A gap that goes backwards — clock step, or events out of order — is
+treated as "no ramp" rather than trusted, so the failure direction is a step
+that is too small rather than too large.
+
+**Bursts are treated as replays, not input.** The device has been seen
+delivering ~70 historical input events in one message. Under the current mapping
+every press acts immediately, so that backlog would fire dozens of toggles and
+resets. A single message carrying more than `behavior.maxEventsPerMessage`
+events (default 8) is dropped with a warning. In normal use each input arrives
+in its own message, and a human cannot produce eight in one 1 Hz window.
+
+**Durations use a monotonic clock, not wall time.** `clock.ts` wraps
+`performance.now()`. Wall-clock time is not monotonic — NTP will step it, and a
+long-running service host will do that eventually. A backwards step mid-countdown
+makes a timer gain time; a forwards step makes it lose time or expire instantly.
+Wall time is still used where it has to match the outside world: log lines, and
+comparing against the device's own timestamps.
+
+Two supporting details: every HTTP call carries a 5 s `AbortSignal.timeout`, so a
+hung request cannot wedge the draw loop, and the draw path holds a single
+in-flight guard so a slow network drops frames rather than queueing them.
 
 ### `timers.ts` — banking, not two clocks
 

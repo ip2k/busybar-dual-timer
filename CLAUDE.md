@@ -4,17 +4,19 @@ Guidance for Claude Code working in this repo.
 
 ## What this is
 
-`busy-dual-timer` — two configurable countdowns on a BUSY Bar, driven by one
-physical button. Tap = start/pause, long press = switch timer A/B, triple tap =
-reset. Everything runs off-device against the Bar's local HTTP API; nothing is
-installed on the Bar itself.
+`busy-dual-timer` — two configurable countdowns on a BUSY Bar. START =
+start/pause, BACK = reset, dial click = switch A/B, dial turn = adjust minutes,
+dial held + turn = adjust seconds. Everything runs off-device against the Bar's
+local HTTP API; nothing is installed on the Bar itself.
 
 Status: **working, and driven through a full cycle against real hardware**
-(2026-09-02) over both USB and Wi-Fi — startup, input stream, all three
-gestures (tap, hold-to-switch, triple-tap reset) by hand, expiry, audio, draw
-and clean shutdown all proven, with no draw failures or stream drops. What is
-left is soak time and tuning, not correctness. See `docs/verification.md` for
-exactly what has and hasn't been proven, and `docs/roadmap.md` for what's next.
+(2026-09-02) over both USB and Wi-Fi — startup, input stream, gestures by hand,
+expiry, audio (verified by ear), draw and clean shutdown all proven, with no
+draw failures or stream drops across a 35-minute soak. The control scheme was
+then remapped across START / BACK / dial; that mapping is implemented and
+tested offline but **not yet re-verified by hand on the device**. See
+`docs/verification.md` for exactly what has and hasn't been proven, and
+`docs/roadmap.md` for what's next.
 
 ## The hardware
 
@@ -59,7 +61,7 @@ real captured device frames. Run it after touching anything in `src/`.
 src/config.ts     load config.json, deep-merge over defaults, validate
 src/proto.ts      minimal protobuf reader for the status WebSocket
 src/api.ts        HTTP client + reconnecting WebSocket
-src/gestures.ts   press/release -> tap / long press / multi-tap
+src/gestures.ts   buttons + dial -> toggle / reset / switch / adjust
 src/timers.ts     the two-countdown state machine (pure, no I/O)
 src/render.ts     72x16 layout -> draw payload (pure, no I/O)
 src/chime.ts      PCM chime synthesis
@@ -111,18 +113,25 @@ smoke test meaningful. I/O belongs in `api.ts` and orchestration in `index.ts`.
    A real WAV file with a RIFF header is not what the firmware wants. Confirmed
    twice over: audible by ear, and the stock sounds are exactly 0.5 s / 1.5 s at
    that format.
-8. **`POST /api/audio/play` returns `200 {"result":"OK"}` for files that do not
+6. **`POST /api/audio/play` returns `200 {"result":"OK"}` for files that do not
    exist**, and never the `404` its spec documents. The status code is worthless
    as evidence — audio can only be verified by a person listening. Do not mark it
    verified any other way.
-9. **`GET /api/storage/list` needs a path starting with `/ext`.** `?path=/`
+7. **`GET /api/storage/list` needs a path starting with `/ext`.** `?path=/`
    returns 400. Stock sounds live in `/ext/apps_assets/shared/sounds`; this app's
    uploads land in `/ext/user_assets/dual_timer/`.
-6. **`/api/openapi.json` does not exist.** It's `/openapi.yaml` at the root.
-7. **`/api/screen` wants an integer.** `?display=0` (front) / `1` (back), not
+8. **`/api/openapi.json` does not exist.** It's `/openapi.yaml` at the root.
+9. **`/api/screen` wants an integer.** `?display=0` (front) / `1` (back), not
    `front`. Despite the `image/bmp` content type the body is **base64 text** of
    raw 72×16 **BGR** pixels — no BMP header. Swap the byte order or your colours
    come back reversed. This is how to check a layout without eyeballing the panel.
+10. **Never measure the gap between inputs with local arrival time.** On a laggy
+   network a stall delivers buffered events all at once and they look
+   simultaneous. Use the device's own `State.timestamp` (Unix ms, in every
+   message) — that's what `parseState` returns it for.
+11. **The stream can deliver a big backlog of input in one message.** Observed
+   once: ~70 historical events at connect. Acting on it would fire dozens of
+   toggles and resets, so `behavior.maxEventsPerMessage` drops oversized bursts.
 
 ## Working style for this repo
 

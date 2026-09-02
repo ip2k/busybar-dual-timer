@@ -82,6 +82,18 @@ class Reader {
     return new Reader(slice, 0, slice.length);
   }
 
+  /**
+   * Little-endian fixed64 as a JS number. The device puts Unix milliseconds
+   * here, which is ~1.8e12 — far below 2^53, so precision is not a concern.
+   */
+  fixed64AsNumber(): number {
+    if (this.pos + 8 > this.end) throw new Error('truncated fixed64');
+    let value = 0;
+    for (let i = 7; i >= 0; i--) value = value * 256 + this.buf[this.pos + i]!;
+    this.pos += 8;
+    return value;
+  }
+
   skip(wireType: number): void {
     switch (wireType) {
       case WIRE_VARINT:
@@ -163,13 +175,30 @@ function parseInputEvent(reader: Reader): InputEvent | null {
   return null;
 }
 
-/** Pull every input event out of one `State` message; ignores all other updates. */
-export function parseInputEvents(message: Uint8Array): InputEvent[] {
+export interface ParsedState {
+  /**
+   * The device's own clock, in Unix ms, from `State.timestamp`. Zero if the
+   * message carried none.
+   *
+   * This matters for anything that measures the interval *between* inputs. Local
+   * arrival time is a property of the network, not of what the user did: a Wi-Fi
+   * stall that releases three buffered detents at once makes them look
+   * simultaneous. The device timestamp is immune to that.
+   */
+  timestampMs: number;
+  events: InputEvent[];
+}
+
+/** Pull the timestamp and every input event out of one `State` message. */
+export function parseState(message: Uint8Array): ParsedState {
   const events: InputEvent[] = [];
+  let timestampMs = 0;
   const reader = new Reader(message);
   while (!reader.done) {
     const [field, wire] = reader.tag();
-    if (field === 2 && wire === WIRE_LEN) {
+    if (field === 1 && wire === WIRE_I64) {
+      timestampMs = reader.fixed64AsNumber();
+    } else if (field === 2 && wire === WIRE_LEN) {
       const update = reader.sub();
       while (!update.done) {
         const [updateField, updateWire] = update.tag();
@@ -184,5 +213,10 @@ export function parseInputEvents(message: Uint8Array): InputEvent[] {
       reader.skip(wire);
     }
   }
-  return events;
+  return { timestampMs, events };
+}
+
+/** Convenience wrapper for callers that only care about the events. */
+export function parseInputEvents(message: Uint8Array): InputEvent[] {
+  return parseState(message).events;
 }
