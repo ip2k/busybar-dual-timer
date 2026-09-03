@@ -475,9 +475,9 @@ function packageVersion(): string {
   }
 }
 
-const HELP = `busy-dual-timer — two countdowns on a BUSY Bar
+const HELP = `busybar-dual-timer — two countdowns on a BUSY Bar
 
-  busy-dual-timer [options]
+  busybar-dual-timer [options]
 
 Options
   --config <path>   config file to use
@@ -522,7 +522,7 @@ if (flag('--init')) {
   mkdirSync(resolve(process.cwd(), 'assets'), { recursive: true });
   writeFileSync(target, exampleConfig());
   console.log(`Wrote ${target}`);
-  console.log("Set device.host to your Bar's address, then run busy-dual-timer.");
+  console.log("Set device.host to your Bar's address, then run busybar-dual-timer.");
   process.exit(0);
 }
 

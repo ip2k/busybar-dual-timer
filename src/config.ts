@@ -317,7 +317,7 @@ export function configSearchPaths(): string[] {
   return [
     ...new Set([
       resolve(process.cwd(), 'config.json'),
-      resolve(xdg, 'busy-dual-timer', 'config.json'),
+      resolve(xdg, 'busybar-dual-timer', 'config.json'),
       // Alongside the source or an unpacked release tarball.
       resolve(PROJECT_ROOT, 'config.json'),
     ]),

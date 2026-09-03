@@ -48,7 +48,7 @@ feel sluggish — that window is the price of keeping reset off BACK.
    arrive without the once-a-second display frames, flip
    `behavior.streamFrames` to `false` by default.
 5. **Deploy as a service** on the Ubuntu box (`<host>`, a dedicated user)
-   using the bundled `busy-dual-timer.service`. Note that box was reported to be
+   using the bundled `busybar-dual-timer.service`. Note that box was reported to be
    crashing every few hours to days as of Sept 2026 (it pings fine as of this run) — worth confirming it's
    stable before relying on it as a host.
 

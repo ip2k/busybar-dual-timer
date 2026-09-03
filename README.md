@@ -1,4 +1,4 @@
-# busy-dual-timer
+# busybar-dual-timer
 
 [![CI](https://github.com/ip2k/busy-dual-timer/actions/workflows/ci.yml/badge.svg)](https://github.com/ip2k/busy-dual-timer/actions/workflows/ci.yml)
 
@@ -69,7 +69,7 @@ never both be draining, so time is never charged to the wrong one.
 ## Just want to run it?
 
 ```bash
-npx busy-dual-timer
+npx busybar-dual-timer
 ```
 
 That's the whole thing over USB — the defaults target the Bar's fixed USB
@@ -79,9 +79,9 @@ run that, put the mode lever on **CUSTOM**.
 To keep it, or to run it over Wi-Fi:
 
 ```bash
-npm install -g busy-dual-timer
-busy-dual-timer --init      # writes config.json in the current directory
-busy-dual-timer             # runs using it
+npm install -g busybar-dual-timer
+busybar-dual-timer --init      # writes config.json in the current directory
+busybar-dual-timer             # runs using it
 ```
 
 `--init` writes a fully commented starting point. Set `device.host` to your
@@ -93,7 +93,7 @@ API. Config is looked for in this order:
 | `--config <path>` | an explicit file |
 | `$BUSY_TIMER_CONFIG` | environment override |
 | `./config.json` | the directory you run from |
-| `~/.config/busy-dual-timer/config.json` | per-user |
+| `~/.config/busybar-dual-timer/config.json` | per-user |
 | *(none)* | built-in defaults — works over USB |
 
 **Node 22 or newer is the only requirement.** There are no dependencies, so
@@ -148,7 +148,7 @@ curl http://10.0.4.20/api/version
 
 ```bash
 git clone <this-repo>
-cd busy-dual-timer
+cd busybar-dual-timer
 npm install          # dev-only: typescript + @types/node
 cp config.example.json config.json
 ```
@@ -428,16 +428,16 @@ with `"mode": "stock", "stockPath": "shared/volume_change.snd"`.
 
 ## Running it as a service
 
-To keep the timer up on an always-on machine, `busy-dual-timer.service` is a
+To keep the timer up on an always-on machine, `busybar-dual-timer.service` is a
 systemd template:
 
 ```bash
 npm run build
-sudo cp -r . /opt/busy-dual-timer
-sudo cp busy-dual-timer.service /etc/systemd/system/
+sudo cp -r . /opt/busybar-dual-timer
+sudo cp busybar-dual-timer.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now busy-dual-timer
-journalctl -u busy-dual-timer -f
+sudo systemctl enable --now busybar-dual-timer
+journalctl -u busybar-dual-timer -f
 ```
 
 Edit `User=` and `WorkingDirectory=` in the unit file first.

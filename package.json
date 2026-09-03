@@ -1,5 +1,5 @@
 {
-  "name": "busy-dual-timer",
+  "name": "busybar-dual-timer",
   "version": "1.0.1",
   "description": "Two configurable countdowns on a BUSY Bar. START starts and pauses, the dial switches A/B, double-click resets, and turning it sets the time.",
   "keywords": [
@@ -24,7 +24,7 @@
     "node": ">=22"
   },
   "bin": {
-    "busy-dual-timer": "dist/index.js"
+    "busybar-dual-timer": "dist/index.js"
   },
   "files": [
     "dist",

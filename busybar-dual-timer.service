@@ -8,7 +8,7 @@ Wants=network-online.target
 Type=simple
 # Change to the user that owns WorkingDirectory.
 User=busy
-WorkingDirectory=/opt/busy-dual-timer
+WorkingDirectory=/opt/busybar-dual-timer
 ExecStart=/usr/bin/node dist/index.js
 Restart=always
 RestartSec=5
