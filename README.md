@@ -27,7 +27,7 @@ flash and nothing to undo — stop the program and the Bar goes back to normal.
 
 ## Controls
 
-![Controls](docs/controls.svg)
+![The BUSY Bar's controls](docs/controls.jpg)
 
 | Control | Action |
 | --- | --- |
@@ -37,8 +37,9 @@ flash and nothing to undo — stop the program and the Bar goes back to normal.
 | **Scroll wheel — turn** | ±1 minute |
 | **Scroll wheel — hold + turn** | ±5 seconds |
 
-The wheel is labelled `OK / Skip` on the device, which is why a click arrives as
-the `ok` button.
+The wheel is labelled `OK / Skip` on the device — which is why a click arrives as
+the `ok` button — and the lever's printed positions are exactly the ones the API
+reports: `BUSY`, `CUSTOM`, `OFF`, `APPS`, `SETTINGS`.
 
 **BACK does nothing, deliberately.** The Bar's firmware uses it to navigate its
 own UI, which can throw this widget off the screen. See
@@ -565,4 +566,11 @@ what has actually been proven on hardware, and what hasn't.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). That covers everything here, including
+`docs/controls.jpg`, which is a photograph of the author's own device rather
+than vendored artwork.
+
+No BUSY assets are redistributed. Their firmware graphics are GPL-2.0-or-later
+and their fonts OFL-1.1 (see the firmware's `REUSE.toml`); this project links to
+the official docs instead of copying from them. The device fonts are referenced
+by name through the draw API, never bundled.
