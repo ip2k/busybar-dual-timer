@@ -438,15 +438,21 @@ dots and dashes would be built out of flashing. Not worth faking.
 
 | Mode | Behaviour |
 | --- | --- |
-| `running` (default) | re-fire on every redraw while a timer runs — reads as continuous flashing in that timer's colour |
-| `transitions` | fire once when a timer starts, is switched, or expires — three clean blinks, then quiet |
+| `transitions` (default) | fire once when a timer starts, is switched, or expires — three clean blinks in that timer's colour, then quiet |
+| `running` | re-fire on every redraw while a timer runs — continuous flashing |
 | `off` | never touch the LED |
 
-`running` is the default, and it's worth knowing it's a *re-trigger* of the
-three-blink animation rather than a genuine continuous blink. `transitions` is
-quieter and arguably truer to what the preset is for — confirmed on hardware:
-starting a timer gives a short burst of blinks in that timer's colour, then
-nothing until the next event.
+**Why `transitions` is the default.** The two modes answer different questions.
+`running` tells you *which timer is going* at any moment, which is genuinely
+useful across a room — but it is a workaround for the missing steady-on state,
+faking persistence by re-triggering an animation, so it flickers in peripheral
+vision for the whole session. `transitions` tells you *that something just
+happened*, uses the preset the way the firmware intends, and is quiet the rest
+of the time. Pick `running` if you want an ambient status light and don't mind
+the flicker.
+
+Confirmed on hardware: in `transitions`, starting a timer gives a short burst of
+blinks in that timer's colour and the LED is then **unlit until the next event**.
 
 **Expiry always uses `expiry.ledColor`** (red by default), not the timer's
 colour — an alarm should read as an alarm whichever timer fired it.

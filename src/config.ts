@@ -95,11 +95,14 @@ export interface Config {
      * colour of your choosing. There is no steady-on and no pattern control —
      * see `docs/busy-bar-api.md`.
      *
+     * - `transitions` (default) fire it once when something happens — started,
+     *               switched, expired — so you get three clean blinks and then
+     *               quiet. This is what a "notification" preset is for.
      * - `running`   re-fire it on every redraw while a timer runs, which reads
-     *               as continuous flashing in that timer's colour.
-     * - `transitions` fire it once when something happens — started, switched,
-     *               expired — so you get three clean blinks and then quiet.
-     *               Closer to what a "notification" preset is for.
+     *               as continuous flashing in that timer's colour. Use it if you
+     *               want an ambient "which timer is going" light; it is a
+     *               workaround for the missing steady-on state, and it flickers
+     *               in peripheral vision all session.
      * - `off`       never touch the LED.
      */
     ledMode: LedMode;
@@ -160,7 +163,7 @@ const DEFAULTS: Config = {
     startPaused: true,
     maxEventsPerMessage: 8,
     reassertEveryMs: 2000,
-    ledMode: 'running',
+    ledMode: 'transitions',
     activeSwitchPosition: null,
   },
   expiry: {

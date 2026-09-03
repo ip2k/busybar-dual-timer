@@ -35,7 +35,7 @@
     "startPaused": true,
     "maxEventsPerMessage": 8,
     "reassertEveryMs": 2000,
-    "ledMode": "running",
+    "ledMode": "transitions",
     "activeSwitchPosition": null
   },
 
