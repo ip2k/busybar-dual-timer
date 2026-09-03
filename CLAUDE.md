@@ -106,9 +106,16 @@ smoke test meaningful. I/O belongs in `api.ts` and orchestration in `index.ts`.
    Default here is 95 so the widget sits above both. If draws silently stop
    landing, check this first.
 4. **The firmware still owns the buttons.** Input events reach you regardless of
-   what's on screen (verified with a built-in app running), but the device may
-   *also* act on the same press. Custom gestures ride alongside device
-   behaviour; they don't suppress it.
+   what's on screen (verified with a built-in app running), but the device
+   *also* acts on the same press, and you cannot suppress that. **BACK pops the
+   device's navigation stack**, which throws the widget off screen — observed on
+   hardware. Its effect is contextual: at the root of the stack it does nothing,
+   so this is intermittent rather than reliable.
+
+   Crucially, nothing tells you the screen was taken, and a paused timer's draw
+   signature never changes, so the widget stays gone. `behavior.reassertEveryMs`
+   exists for exactly this: redraw periodically regardless of change, and
+   priority 95 reclaims the panel within a couple of seconds.
 5. **Audio is headerless PCM despite the `.wav` name** — s16le, mono, 44.1 kHz.
    A real WAV file with a RIFF header is not what the firmware wants. Confirmed
    twice over: audible by ear, and the stock sounds are exactly 0.5 s / 1.5 s at

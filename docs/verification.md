@@ -121,6 +121,45 @@ and 132300 bytes, exactly 0.5 s and 1.5 s of 16-bit mono 44.1 kHz.
 **Lesson for this repo: never mark an output-producing endpoint verified on the
 strength of its status code.**
 
+### The firmware steals the screen, and we now take it back (2026-09-03)
+
+Pressing BACK on the device threw the widget off the panel: a frame grab showed
+the device's own clock/calendar screen in white and grey where our timer had
+been. The widget did **not** come back on its own.
+
+Two separate things, worth keeping apart:
+
+1. **The firmware acted on the press.** BACK pops the device's navigation stack.
+   This cannot be suppressed — trap 4 in `CLAUDE.md`. Its effect is contextual:
+   pressing BACK again once the stack is at its root did nothing, so the
+   disruption is intermittent rather than reliable.
+2. **We never redrew.** This was our bug. `render()` skips the draw when the
+   payload signature is unchanged, and a paused timer's signature is static, so
+   once the screen was taken nothing ever reclaimed it.
+
+Fixed by redrawing at least every `behavior.reassertEveryMs` (default 2000)
+regardless of change. Verified on hardware:
+
+| | Panel |
+| --- | --- |
+| immediately after BACK | device UI (`ffffff`, `7d7d7d`) |
+| 4 s later | **our widget** (`3ba7ff`, `1b4d76`) |
+
+Note the gesture itself was never the problem — `[gesture] back -> reset` fired
+correctly throughout. Only the display was lost.
+
+### Ramp thresholds were miscalibrated (2026-09-03)
+
+First hardware use of the dial showed a deliberate spin runs **56–83 ms between
+detents**, not the ~600 ms a casual spin had suggested. With `fastGapMs: 90`
+that meant ordinary spinning immediately hit the ×5 multiplier — the timer went
+2:04 → 17:04 in four detents. Retuned so ×5 needs a genuine flick (<25 ms) and
+normal spinning lands on ×2.
+
+A reminder that "measured" is not the same as "measured under the conditions
+that matter": the earlier figure came from the dial being turned for a capture,
+not from someone actually setting a timer.
+
 ### Encoder, dial click and switch (2026-09-02)
 
 Captured off `/api/status/ws` with a raw byte dumper, by hand:

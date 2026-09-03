@@ -20,7 +20,7 @@
     "switchButton": "ok",
     "coarseStepSeconds": 60,
     "fineStepSeconds": 5,
-    "ramp": { "fastGapMs": 90, "fastMultiplier": 5, "mediumGapMs": 250, "mediumMultiplier": 2 },
+    "ramp": { "fastGapMs": 25, "fastMultiplier": 5, "mediumGapMs": 100, "mediumMultiplier": 2 },
     "maxSeconds": 86400
   },
 
@@ -29,7 +29,8 @@
     "autoAdvanceOnExpiry": false,
     "streamFrames": true,
     "startPaused": true,
-    "maxEventsPerMessage": 8
+    "maxEventsPerMessage": 8,
+    "reassertEveryMs": 2000
   },
 
   "expiry": {

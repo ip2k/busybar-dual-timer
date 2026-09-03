@@ -45,6 +45,12 @@ export interface Config {
      * dozens of toggles and resets. 0 disables the guard.
      */
     maxEventsPerMessage: number;
+    /**
+     * Redraw at least this often even when nothing changed, to reclaim the
+     * screen after the firmware navigates away on its own (BACK exits to the
+     * device UI). 0 disables it.
+     */
+    reassertEveryMs: number;
   };
   expiry: {
     flashSeconds: number;
@@ -76,9 +82,11 @@ const DEFAULTS: Config = {
     switchButton: 'ok',
     coarseStepSeconds: 60,
     fineStepSeconds: 5,
-    // Measured on hardware: a casual spin is ~600 ms between detents, a fast one
-    // can be 15 ms. These thresholds sit either side of a deliberate spin.
-    ramp: { fastGapMs: 90, fastMultiplier: 5, mediumGapMs: 250, mediumMultiplier: 2 },
+    // Measured on hardware. A deliberate spin sits around 56-83 ms between
+    // detents, so those thresholds must be BELOW that or ordinary spinning
+    // ramps to the top multiplier immediately. x5 is reserved for a genuine
+    // flick (<25 ms); normal spinning lands on x2.
+    ramp: { fastGapMs: 25, fastMultiplier: 5, mediumGapMs: 100, mediumMultiplier: 2 },
     maxSeconds: 24 * 60 * 60,
   },
   behavior: {
@@ -87,6 +95,7 @@ const DEFAULTS: Config = {
     streamFrames: true,
     startPaused: true,
     maxEventsPerMessage: 8,
+    reassertEveryMs: 2000,
   },
   expiry: {
     flashSeconds: 10,
@@ -146,6 +155,7 @@ function validate(cfg: Config): void {
   assert(cfg.gestures.coarseStepSeconds > 0, 'gestures.coarseStepSeconds must be > 0');
   assert(cfg.gestures.fineStepSeconds > 0, 'gestures.fineStepSeconds must be > 0');
   assert(cfg.gestures.maxSeconds > 0, 'gestures.maxSeconds must be > 0');
+  assert(cfg.behavior.reassertEveryMs >= 0, 'behavior.reassertEveryMs must be >= 0 (0 disables it)');
   assert(cfg.behavior.maxEventsPerMessage >= 0, 'behavior.maxEventsPerMessage must be >= 0 (0 disables the guard)');
   const { ramp } = cfg.gestures;
   assert(ramp.fastGapMs > 0 && ramp.mediumGapMs > ramp.fastGapMs, 'gestures.ramp.mediumGapMs must be > fastGapMs > 0');

@@ -29,6 +29,7 @@ class DualTimerApp {
   private soundsPlayed = 0;
   private lastSoundAt = 0;
   private drawing = false;
+  private lastDrawAt = 0;
   private ticker: NodeJS.Timeout | null = null;
 
   private readonly config: Config;
@@ -217,7 +218,13 @@ class DualTimerApp {
       },
     );
     const sig = signature(payload);
-    if (!force && sig === this.lastSignature) return;
+    // The firmware owns the buttons and will navigate on its own — BACK exits to
+    // the device UI, and the widget is simply gone. Nothing tells us that
+    // happened, and a paused timer's signature never changes, so without a
+    // periodic re-assert the widget would stay off screen indefinitely.
+    // Redrawing at priority 95 reclaims it.
+    const stale = monotonicMs() - this.lastDrawAt >= this.config.behavior.reassertEveryMs;
+    if (!force && !stale && sig === this.lastSignature) return;
 
     // Element sets are keyed by id; when the set itself changes (bar appears,
     // flash rectangle comes and goes) stale elements have to be cleared first.
@@ -228,6 +235,7 @@ class DualTimerApp {
     try {
       if (needsClear) await this.client.clear(this.config.app.name);
       await this.client.draw(payload);
+      this.lastDrawAt = monotonicMs();
       this.lastSignature = sig;
       this.lastElementIds = elementIds;
     } catch (error) {
