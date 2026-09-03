@@ -121,6 +121,28 @@ and 132300 bytes, exactly 0.5 s and 1.5 s of 16-bit mono 44.1 kHz.
 **Lesson for this repo: never mark an output-producing endpoint verified on the
 strength of its status code.**
 
+### Sound conversion, verified by ear (2026-09-03)
+
+The converter was exercised end to end on hardware, both paths:
+
+| Source | Path | Uploaded |
+| --- | --- | --- |
+| stereo 48 kHz 16-bit WAV | in-process, no external tools | 132300 bytes |
+| stereo 48 kHz 192 kbps MP3 | ffmpeg | 132300 bytes |
+
+Both land on exactly 132300 bytes — 1.50 s of s16le mono 44.1 kHz, byte-for-byte
+the same length as the device's own 1.5 s stock sounds. The upload was confirmed
+present at `/ext/user_assets/dual_timer/chime.wav`.
+
+Then the part that actually matters: **a person listened.** The converted sweep
+played audibly on the Bar and was plainly a different sound from the synthesised
+bell chime, confirming it was our file rather than a leftover. Following the rule
+this project learned the hard way, no status code was treated as evidence.
+
+Also verified incidentally: the WAV was written by ffmpeg to a file named
+`chime.wav` but was a genuine RIFF WAV, and detection ignored the extension and
+identified it by its magic bytes. The MP3 was detected as MP3 the same way.
+
 ### The firmware steals the screen, and we now take it back (2026-09-03)
 
 Pressing BACK on the device threw the widget off the panel: a frame grab showed
@@ -231,6 +253,11 @@ This confirms the element schema, the font names, the rectangle element, the
 
 ## Not yet verified
 
+- **The current control scheme, by hand.** START / dial click / dial
+  double-click / turn / hold+turn is implemented, covered offline and running on
+  the device, but nobody has sat down and used it. Double-click reset in
+  particular has never been performed by a human. Earlier mappings were changed
+  twice *because* hardware use contradicted the design, so this matters.
 - **Long-run stability.** The longest observed run is minutes, over both USB and
   Wi-Fi, clean in both. Clock drift over hours, reconnect behaviour after a real
   network drop, and what happens when the device sleeps are all still unobserved.
