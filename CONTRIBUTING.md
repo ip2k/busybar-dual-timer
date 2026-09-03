@@ -118,6 +118,24 @@ GitHub releases. To enable it, create a **granular automation token** on npm
 with publish rights to this package and add it as `NPM_TOKEN` under
 Settings → Secrets and variables → Actions.
 
+**The token has to be able to publish without a one-time password.** CI cannot
+answer an OTP prompt, so a token that triggers 2FA fails with `EOTP` — after
+signing provenance, which makes it look like it nearly worked. Any of these
+avoid it:
+
+- **Trusted publishing (OIDC)** — configure the package on npmjs.com to trust
+  this repository and workflow. No token or secret at all, which is the best
+  answer if it is available to you.
+- A **granular access token**, with the account's 2FA set to *authorization
+  only* rather than *authorization and writes*.
+- A **classic automation token**, which bypasses 2FA by design but cannot be
+  scoped to a single package.
+
+npm publish runs *before* the GitHub release is created, so a failure here stops
+the run rather than leaving a release advertising a version npm does not have.
+The tag is pushed earlier, so a failed publish still leaves the tag behind —
+delete it, or move on to the next patch.
+
 Publishing to npm is close to permanent: unpublishing is restricted after 72
 hours and the name stays burned. GitHub releases can be deleted freely.
 
