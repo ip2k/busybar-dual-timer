@@ -121,6 +121,21 @@ and 132300 bytes, exactly 0.5 s and 1.5 s of 16-bit mono 44.1 kHz.
 **Lesson for this repo: never mark an output-producing endpoint verified on the
 strength of its status code.**
 
+### The remapped control scheme, by hand (2026-09-03)
+
+Confirmed on the device by a person using the physical controls: START
+start/pause, dial click to switch, dial double-click to reset, dial turn for
+minutes, dial held + turn for seconds. All behave as designed.
+
+The 300 ms `doubleTapMs` window did not read as sluggish in use.
+
+**Pause-on-switch was noticed in use before it was written down.** A running
+timer stops when you switch — correct and desirable, but at the time it was an
+emergent property of `settle()` plus the phase assignment, documented nowhere
+and asserted by no test. It is now a stated guarantee in `timers.ts` with three
+tests behind it, checked by deliberately breaking the behaviour and confirming
+the suite fails.
+
 ### Sound conversion, verified by ear (2026-09-03)
 
 The converter was exercised end to end on hardware, both paths:
@@ -253,11 +268,6 @@ This confirms the element schema, the font names, the rectangle element, the
 
 ## Not yet verified
 
-- **The current control scheme, by hand.** START / dial click / dial
-  double-click / turn / hold+turn is implemented, covered offline and running on
-  the device, but nobody has sat down and used it. Double-click reset in
-  particular has never been performed by a human. Earlier mappings were changed
-  twice *because* hardware use contradicted the design, so this matters.
 - **Long-run stability.** The longest observed run is minutes, over both USB and
   Wi-Fi, clean in both. Clock drift over hours, reconnect behaviour after a real
   network drop, and what happens when the device sleeps are all still unobserved.

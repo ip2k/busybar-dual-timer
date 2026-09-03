@@ -153,6 +153,31 @@ timer.switchTimer(false);
 assert.equal(timer.snapshot().label, 'A');
 assert.equal(timer.snapshot().remainingMs, banked, 'switching back restores banked time');
 
+// Switching a RUNNING timer must stop the clock -- a defined guarantee, not an
+// accident of settle(). If this ever regressed, both timers could drain at once
+// and time would be attributed to whichever one you were not using.
+timer.toggle();
+assert.equal(timer.currentPhase, 'running');
+await sleep(150);
+timer.switchTimer(false);
+assert.notEqual(timer.currentPhase, 'running', 'switching must never leave a timer running');
+assert.equal(timer.snapshot().label, 'B');
+
+// ...and the incoming timer must not be draining either.
+const arrived = timer.snapshot().remainingMs;
+await sleep(150);
+assert.equal(timer.snapshot().remainingMs, arrived, 'the timer you switch TO must not auto-start');
+
+// ...nor the one you left, when you come back to it.
+timer.switchTimer(false);
+assert.equal(timer.snapshot().label, 'A');
+assert.notEqual(timer.currentPhase, 'running', 'switching back must not resume the clock');
+const returned = timer.snapshot().remainingMs;
+await sleep(150);
+assert.equal(timer.snapshot().remainingMs, returned, 'the timer you return to must stay stopped');
+
+timer.reset();
+
 timer.reset();
 assert.equal(timer.snapshot().remainingMs, 2000);
 assert.equal(timer.currentPhase, 'idle');

@@ -146,6 +146,19 @@ Only one timer runs at a time. Switching *banks* the active timer's remaining
 time (`settle()`) and makes the other one current, so you can flip back and
 forth without losing progress. A timer at zero is refilled when you land on it.
 
+**Switching also stops the clock, and that is a contract rather than a side
+effect.** `switchTimer` never leaves the phase `running`: the outgoing timer is
+settled and the incoming one lands on `idle` or `paused`. Starting a countdown
+the user did not ask for is silently wrong — they would be timing a break
+against a clock they never started — and requiring a press to resume is what
+makes it impossible for both timers to drain at once, so time can never be
+attributed to the wrong one.
+
+It would be easy to lose this in a refactor, since it emerges from two separate
+lines. There are tests that a running timer stops on switch, that the timer you
+switch *to* does not auto-start, and that returning to the first one does not
+resume it.
+
 `checkExpiry()` returns `true` exactly once on the transition to zero, so the
 caller can fire the alarm without edge-detection of its own.
 

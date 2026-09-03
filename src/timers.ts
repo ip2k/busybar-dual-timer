@@ -98,17 +98,33 @@ export class DualTimer {
   }
 
   /**
-   * Flip A <-> B. The timer you leave is always banked at its current
-   * remaining time, unless `resetOutgoing` is set, in which case it goes back
-   * to full.
+   * Flip A <-> B.
+   *
+   * Two guarantees, both deliberate:
+   *
+   * 1. **The timer you leave is banked** at its current remaining time, so you
+   *    can flip back and forth without losing your place. `resetOutgoing` sends
+   *    it back to full instead.
+   * 2. **Switching always leaves you stopped.** Neither timer runs afterwards —
+   *    the outgoing one is settled, and the incoming one is `idle` if untouched
+   *    or `paused` if partly used. It never auto-starts.
+   *
+   * The second one is the important one to preserve. Switching is how you
+   * change what you are doing, and starting a countdown you did not ask for is
+   * both surprising and silently wrong — you would be timing a break against a
+   * clock you never started. Requiring a press to resume means the two timers
+   * can never both be draining, and time is never attributed to the wrong one.
+   *
+   * Both guarantees are covered by tests; they are contracts, not side effects.
    */
   switchTimer(resetOutgoing = false): void {
-    this.settle();
+    this.settle(); // stops the outgoing timer: guarantee 2, first half
     if (resetOutgoing) this.slot.remainingMs = this.slot.totalMs;
     this.active = this.active === 0 ? 1 : 0;
     const next = this.slot;
     const full = next.totalMs;
     if (next.remainingMs <= 0) next.remainingMs = full;
+    // Never 'running': guarantee 2, second half.
     this.phase = next.remainingMs === full ? 'idle' : 'paused';
   }
 

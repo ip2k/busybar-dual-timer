@@ -37,8 +37,16 @@ flash and nothing to undo — stop the program and the Bar goes back to normal.
 own UI, which throws this widget off the screen. See
 [Why BACK is unbound](#why-back-is-unbound).
 
-Switching timers keeps the time you had left on each, so you can flip back and
-forth without losing your place.
+**Switching stops the clock.** Two defined behaviours, not accidents:
+
+- **The timer you leave is banked** at whatever was left on it, so you can flip
+  back and forth without losing your place.
+- **Neither timer runs after a switch.** Press START to begin the new one.
+
+That second one is deliberate. Switching is how you change what you're doing, so
+starting a countdown you didn't ask for would be quietly wrong — you'd be timing
+a break against a clock you never started. It also means the two timers can
+never both be draining, so time is never charged to the wrong one.
 
 ---
 
