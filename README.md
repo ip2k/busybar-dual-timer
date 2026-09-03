@@ -583,6 +583,16 @@ what has actually been proven on hardware, and what hasn't.
 - Your own Bar serves its spec at `http://<bar>/openapi.yaml` and rendered docs
   at `http://<bar>/docs/`
 
+## Contributing
+
+Pull requests welcome — see **[CONTRIBUTING.md](CONTRIBUTING.md)**. Worth reading
+first: this project has zero runtime dependencies on purpose, Node's type
+stripping rules out `enum` and parameter properties, and there are rules about
+not marking a hardware claim "verified" unless you actually ran it.
+
+You don't need a BUSY Bar to contribute. The test suite runs offline against
+real captured device frames.
+
 ## License
 
 MIT — see [LICENSE](LICENSE). That covers everything here, including
