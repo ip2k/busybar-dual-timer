@@ -1,64 +1,96 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 360" width="760" height="360" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 430" width="860" height="430" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
   <title>busy-dual-timer controls</title>
+  <desc>BUSY Bar top deck, left to right: mode lever with five positions, the Start/Pause pad, the Back button, and the scroll wheel. The front face below is the 72x16 LED panel.</desc>
 
-  <!-- Colours chosen to read on both light and dark GitHub themes -->
   <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e"/>
+    <marker id="tip" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#E8590C"/>
     </marker>
+    <style>
+      .deck  { fill:#FBFBFC; stroke:#C6CBD1; stroke-width:2.5; stroke-linejoin:round; }
+      .part  { fill:#FFFFFF; stroke:#A9B0B8; stroke-width:2.5; stroke-linejoin:round; }
+      .sunk  { fill:#EDEFF2; stroke:#A9B0B8; stroke-width:2.5; }
+      .orange{ fill:#E8590C; }
+      .acc   { stroke:#E8590C; stroke-width:3; fill:none; stroke-linecap:round; }
+      .lbl   { font-size:14px; font-weight:700; fill:#22272C; }
+      .sub   { font-size:12px; fill:#5B646E; }
+      .pos   { font-size:10.5px; font-weight:600; fill:#5B646E; }
+      .act   { font-size:13px; font-weight:700; fill:#E8590C; }
+      .note  { font-size:12px; fill:#5B646E; }
+    </style>
   </defs>
+  <rect width="860" height="430" fill="#FFFFFF"/>
 
-  <!-- START callout, above -->
-  <text x="392" y="34" font-size="14" fill="#3ba7ff" text-anchor="middle" font-weight="700">press → start / pause</text>
-  <text x="392" y="52" font-size="11" fill="#6e7681" text-anchor="middle">instant, nothing to wait for</text>
-  <line x1="392" y1="64" x2="392" y2="112" stroke="#8b949e" stroke-width="1.2" marker-end="url(#arrow)"/>
+  <!-- ============== top deck ============== -->
+  <path class="deck" d="M96 128 h668 a14 14 0 0 1 14 14 v92 h-696 v-92 a14 14 0 0 1 14-14 z"/>
 
-  <!-- the device -->
-  <rect x="110" y="126" width="420" height="88" rx="12" fill="#1c2128" stroke="#444c56" stroke-width="1.5"/>
+  <!-- mode lever, FAR LEFT, with its five printed positions -->
+  <text x="120" y="152" class="pos" fill="#E8590C">BUSY</text>
+  <text x="120" y="171" class="pos">CUSTOM</text>
+  <text x="120" y="190" class="pos">OFF</text>
+  <text x="120" y="209" class="pos">APPS</text>
+  <text x="120" y="228" class="pos">SETTINGS</text>
+  <path d="M186 148 h26 M186 167 h26 M186 186 h26 M186 205 h26 M186 224 h26" stroke="#C6CBD1" stroke-width="1.6"/>
+  <!-- the lever itself, sitting on CUSTOM -->
+  <path class="part" d="M232 158 h34 a20 20 0 0 1 0 40 h-34 a20 20 0 0 1 0-40 z"/>
+  <circle cx="266" cy="178" r="17" class="part"/>
+  <circle cx="266" cy="178" r="17" fill="none" stroke="#E8590C" stroke-width="3"/>
+  <rect x="238" y="170" width="20" height="16" rx="8" class="orange"/>
 
-  <!-- front panel -->
-  <rect x="132" y="146" width="216" height="48" rx="3" fill="#05070a" stroke="#30363d" stroke-width="1"/>
-  <text x="142" y="162" font-size="9" fill="#3ba7ff" font-weight="600">A</text>
-  <text x="240" y="181" font-size="26" fill="#3ba7ff" text-anchor="middle" font-weight="700" letter-spacing="1">24:59</text>
-  <rect x="132" y="190" width="150" height="3" fill="#3ba7ff"/>
+  <!-- Start / Pause pad, CENTRE -->
+  <rect x="330" y="138" width="270" height="90" rx="12" class="part"/>
+  <text x="465" y="190" class="lbl" text-anchor="middle" font-size="17">Start / Pause</text>
 
-  <!-- START button -->
-  <circle cx="392" cy="170" r="21" fill="#21262d" stroke="#484f58" stroke-width="1.5"/>
-  <circle cx="392" cy="170" r="8" fill="#0080ff" opacity="0.9"/>
-  <text x="392" y="207" font-size="9" fill="#8b949e" text-anchor="middle" font-weight="600">START</text>
+  <!-- Back button -->
+  <circle cx="640" cy="170" r="19" class="part"/>
+  <circle cx="640" cy="170" r="15" class="orange" opacity="0.9"/>
+  <text x="640" y="174" font-size="9" fill="#FFFFFF" text-anchor="middle" font-weight="700">Back</text>
 
-  <!-- dial -->
-  <circle cx="468" cy="170" r="25" fill="#21262d" stroke="#484f58" stroke-width="1.5"/>
-  <circle cx="468" cy="170" r="15" fill="#2d333b" stroke="#30363d" stroke-width="1"/>
-  <line x1="468" y1="155" x2="468" y2="162" stroke="#8b949e" stroke-width="2" stroke-linecap="round"/>
-  <text x="468" y="207" font-size="9" fill="#8b949e" text-anchor="middle" font-weight="600">DIAL</text>
+  <!-- scroll wheel, FAR RIGHT -->
+  <circle cx="716" cy="182" r="52" class="part"/>
+  <circle cx="716" cy="182" r="52" fill="none" stroke="#E8590C" stroke-width="3.5"/>
+  <circle cx="716" cy="182" r="34" class="sunk"/>
+  <text x="716" y="146" font-size="10" fill="#5B646E" text-anchor="middle" font-weight="600">Time</text>
+  <text x="716" y="186" font-size="10" fill="#22272C" text-anchor="middle" font-weight="700">OK / Skip</text>
+  <text x="716" y="226" font-size="10" fill="#5B646E" text-anchor="middle" font-weight="600">Scroll</text>
 
-  <!-- panel caption -->
-  <text x="240" y="232" font-size="10" fill="#6e7681" text-anchor="middle">72 × 16 front panel</text>
+  <!-- ============== front face = the LED panel ============== -->
+  <path d="M96 234 h668 v96 a16 16 0 0 1 -16 16 h-636 a16 16 0 0 1 -16-16 z" fill="#26292E" stroke="#15181C" stroke-width="2"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-weight="800">
+    <text x="126" y="272" font-size="14" fill="#2B7FFF">A</text>
+    <text x="430" y="308" font-size="52" fill="#2B7FFF" text-anchor="middle" letter-spacing="4">24:59</text>
+  </g>
+  <rect x="118" y="326" width="360" height="6" rx="2" fill="#2B7FFF"/>
+  <rect x="478" y="326" width="264" height="6" rx="2" fill="#1B406E"/>
 
-  <!-- dial callouts, all to the right so nothing collides -->
-  <line x1="495" y1="156" x2="556" y2="124" stroke="#8b949e" stroke-width="1.2" marker-end="url(#arrow)"/>
-  <text x="564" y="118" font-size="13" fill="#33d17a" font-weight="700">turn</text>
-  <text x="564" y="134" font-size="11" fill="#adbac7">± 1 minute</text>
+  <!-- ============== callouts ============== -->
+  <path class="acc" d="M266 148 v-38" marker-end="url(#tip)"/>
+  <text x="266" y="98" class="lbl" text-anchor="middle">MODE LEVER</text>
+  <text x="266" y="80" class="sub" text-anchor="middle">put it on CUSTOM</text>
+  <text x="266" y="62" class="sub" text-anchor="middle" font-size="11">anywhere else, this app stays out of the way</text>
 
-  <line x1="495" y1="166" x2="556" y2="160" stroke="#8b949e" stroke-width="1.2" marker-end="url(#arrow)"/>
-  <text x="564" y="164" font-size="13" fill="#33d17a" font-weight="700">hold + turn</text>
-  <text x="564" y="180" font-size="11" fill="#adbac7">± 5 seconds</text>
+  <path class="acc" d="M465 134 v-38" marker-end="url(#tip)"/>
+  <text x="465" y="84" class="lbl" text-anchor="middle">START</text>
+  <text x="465" y="66" class="sub" text-anchor="middle">start / pause — instant</text>
 
-  <line x1="495" y1="180" x2="556" y2="212" stroke="#8b949e" stroke-width="1.2" marker-end="url(#arrow)"/>
-  <text x="564" y="212" font-size="13" fill="#33d17a" font-weight="700">click</text>
-  <text x="564" y="228" font-size="11" fill="#adbac7">switch A ↔ B</text>
+  <path class="acc" d="M640 146 v-24" marker-end="url(#tip)"/>
+  <text x="640" y="112" class="sub" text-anchor="middle" font-weight="700">BACK</text>
+  <text x="640" y="96" class="sub" text-anchor="middle" font-size="11">unbound — the firmware owns it</text>
 
-  <line x1="480" y1="194" x2="556" y2="262" stroke="#8b949e" stroke-width="1.2" marker-end="url(#arrow)"/>
-  <text x="564" y="262" font-size="13" fill="#33d17a" font-weight="700">double-click</text>
-  <text x="564" y="278" font-size="11" fill="#adbac7">reset</text>
+  <path class="acc" d="M760 146 a58 58 0 0 1 12 40" marker-end="url(#tip)"/>
+  <path class="acc" d="M672 146 a58 58 0 0 0 -12 40" marker-end="url(#tip)"/>
+  <text x="800" y="118" class="lbl" text-anchor="end">SCROLL WHEEL</text>
 
-  <!-- notes, bottom left, clear of the callouts -->
-  <text x="110" y="272" font-size="12" fill="#adbac7" font-weight="600">Switching keeps both timers' remaining time</text>
-  <text x="110" y="289" font-size="11" fill="#6e7681">and always stops the clock — press START to resume</text>
-
-  <text x="110" y="315" font-size="12" fill="#adbac7" font-weight="600">BACK is unbound</text>
-  <text x="110" y="332" font-size="11" fill="#6e7681">the firmware uses it to navigate its own UI</text>
-
-  <text x="110" y="352" font-size="11" fill="#6e7681">Put the lever on CUSTOM — on APPS the firmware can take the screen</text>
+  <!-- ============== action key ============== -->
+  <g transform="translate(96,378)">
+    <text x="0" y="0" class="act">turn</text>
+    <text x="46" y="0" class="note">± 1 minute</text>
+    <text x="0" y="22" class="act">hold + turn</text>
+    <text x="86" y="22" class="note">± 5 seconds</text>
+    <text x="240" y="0" class="act">click</text>
+    <text x="286" y="0" class="note">switch A ↔ B — both keep their time</text>
+    <text x="240" y="22" class="act">double-click</text>
+    <text x="336" y="22" class="note">reset</text>
+  </g>
+  <text x="96" y="422" class="note" font-size="11">The whole front face is the LED panel: 72 × 16 pixels. A finished timer holds “DONE” until you press something.</text>
 </svg>

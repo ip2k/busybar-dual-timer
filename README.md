@@ -6,14 +6,11 @@ Timer **A** for work, timer **B** for a break. Click the dial to switch between
 them; each one remembers where it was. Turn the dial to set the time without
 touching a config file.
 
-```
- A                                          B
-   ██  ██  ██████   ████            ████   ██████    ████
-   ██████     ██   ██  ██   ->     ██  ██  ██       ██  ██
-   ██  ██    ██    ██  ██          ██  ██  ██████   ██  ██
-   ████     ██      ████            ████   ██████    ████
- ████████████████████░░░░░░        ██████████████████░░░░
-```
+![The timer running on a BUSY Bar](docs/demo.gif)
+
+*Real frames captured off the device: timer A counting, a dial click switching to
+B, switching back to find A exactly where it was, and the finished timer holding
+`DONE`.*
 
 Nothing is installed on the Bar. This runs on any machine on the same network
 and drives the device over its local HTTP API, so there is no firmware to
@@ -30,13 +27,18 @@ flash and nothing to undo — stop the program and the Bar goes back to normal.
 
 ## Controls
 
+![Controls](docs/controls.svg)
+
 | Control | Action |
 | --- | --- |
-| **START** | start / pause |
-| **Dial click** | switch between timer A and B |
-| **Dial double-click** | reset the current timer |
-| **Dial turn** | ±1 minute |
-| **Dial hold + turn** | ±5 seconds |
+| **Start / Pause** | start / pause |
+| **Scroll wheel — click** | switch between timer A and B |
+| **Scroll wheel — double-click** | reset the current timer |
+| **Scroll wheel — turn** | ±1 minute |
+| **Scroll wheel — hold + turn** | ±5 seconds |
+
+The wheel is labelled `OK / Skip` on the device, which is why a click arrives as
+the `ok` button.
 
 **BACK does nothing, deliberately.** The Bar's firmware uses it to navigate its
 own UI, which can throw this widget off the screen. See
