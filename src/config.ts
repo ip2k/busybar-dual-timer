@@ -122,6 +122,18 @@ export interface Config {
   };
   expiry: {
     flashSeconds: number;
+    /**
+     * How long "DONE" stays on screen after the alarm ends.
+     *
+     * A finished timer should not quietly revert to `00:00` — that looks
+     * identical to one that was never started. But holding the panel forever is
+     * worse: the Bar stops being usable for anything else until someone presses
+     * a button, which is antisocial for a device that has its own apps.
+     *
+     * Seconds to hold, then release the screen. `null` holds until acknowledged.
+     * Pressing anything dismisses it immediately either way.
+     */
+    holdSeconds: number | null;
     flashHz: number;
     ledColor: string;
     sound: {
@@ -171,7 +183,10 @@ const DEFAULTS: Config = {
   },
   expiry: {
     flashSeconds: 10,
-    flashHz: 0, // 0 = hold DONE steady; >0 strobes at that rate
+    holdSeconds: 300,
+    // The alarm inverts the whole panel at this rate — solid colour with the
+    // text knocked out, alternating with text on black. 0 holds it steady.
+    flashHz: 2,
     ledColor: '#E60022FF', // BUSY's brand error red
     sound: { mode: 'asset', file: 'chime.wav', stockPath: null, repeat: 3, repeatEveryMs: 1200 },
   },
@@ -262,6 +277,9 @@ function validate(cfg: Config): void {
   );
   assert(cfg.behavior.reassertEveryMs >= 0, 'behavior.reassertEveryMs must be >= 0 (0 disables it)');
   assert(cfg.behavior.maxEventsPerMessage >= 0, 'behavior.maxEventsPerMessage must be >= 0 (0 disables the guard)');
+  if (cfg.expiry.holdSeconds !== null) {
+    assert(cfg.expiry.holdSeconds >= 0, 'expiry.holdSeconds must be >= 0, or null to hold until acknowledged');
+  }
   assert(cfg.expiry.flashHz >= 0, 'expiry.flashHz must be >= 0 (0 holds DONE steady)');
   assert(HEX_RGBA.test(cfg.expiry.ledColor), 'expiry.ledColor must be #RRGGBBAA');
   assert(['asset', 'stock', 'none'].includes(cfg.expiry.sound.mode), "expiry.sound.mode must be 'asset', 'stock' or 'none'");

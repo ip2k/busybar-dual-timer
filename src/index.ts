@@ -309,15 +309,20 @@ class DualTimerApp {
         });
       }
       if (elapsed >= this.config.expiry.flashSeconds * 1000) {
-        // `flashSeconds` bounds the *alarm*, not the message. Auto-advancing is
-        // an explicit opt-in; otherwise the DONE screen stays until someone
-        // presses something. A finished timer that quietly reverts to 00:00
-        // is indistinguishable from one that was never started.
+        // `flashSeconds` bounds the *alarm*; `holdSeconds` bounds the message
+        // that follows it. A finished timer that reverted straight to 00:00
+        // would look like one that was never started — but holding the panel
+        // indefinitely stops the Bar being useful for anything else, so the
+        // screen is handed back after the hold unless told otherwise.
+        const { holdSeconds, flashSeconds } = this.config.expiry;
         if (this.config.behavior.autoAdvanceOnExpiry) {
           this.dismissExpiry();
           this.timer.switchTimer(false);
           this.timer.toggle();
           log('[expiry] auto-advanced to the other timer');
+        } else if (holdSeconds !== null && elapsed >= Math.max(flashSeconds, holdSeconds) * 1000) {
+          this.dismissExpiry();
+          log(`[expiry] released the screen after holding DONE for ${holdSeconds}s`);
         }
       }
     }
@@ -357,6 +362,12 @@ class DualTimerApp {
     return phase === 'running' || phase === 'expired';
   }
 
+  /** Is the expiry alarm still sounding, as opposed to the quiet hold after it? */
+  private alarming(): boolean {
+    if (this.timer.currentPhase !== 'expired' || this.expiryStartedAt === null) return false;
+    return monotonicMs() - this.expiryStartedAt < this.config.expiry.flashSeconds * 1000;
+  }
+
   private blinkOn(): boolean {
     const phase = this.timer.currentPhase;
     if (phase === 'expired') {
@@ -364,10 +375,7 @@ class DualTimerApp {
       // After it, "DONE" stays up but calms down to dim text on black — it has
       // to persist so a finished timer is never mistaken for one that was never
       // started, and a bright block left on a desk indefinitely is obnoxious.
-      const alarming =
-        this.expiryStartedAt !== null &&
-        monotonicMs() - this.expiryStartedAt < this.config.expiry.flashSeconds * 1000;
-      if (!alarming) return false;
+      if (!this.alarming()) return false;
 
       // flashHz 0 holds it steady rather than strobing. That is the default: a
       // finished timer wants to be readable, and a 72x16 panel blinking at 3Hz
@@ -404,7 +412,7 @@ class DualTimerApp {
     }
     if (this.drawing) return;
     const payload = buildPayload(
-      { snapshot: this.timer.snapshot(), blinkOn: this.blinkOn() },
+      { snapshot: this.timer.snapshot(), blinkOn: this.blinkOn(), alarm: this.alarming() },
       {
         applicationName: this.config.app.name,
         priority: this.config.app.priority,

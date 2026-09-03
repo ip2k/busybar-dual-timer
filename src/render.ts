@@ -23,6 +23,12 @@ export interface RenderState {
   snapshot: Snapshot;
   /** Drives the paused blink and the expiry flash. */
   blinkOn: boolean;
+  /**
+   * True while the expiry alarm is sounding, as opposed to the quiet "DONE"
+   * that holds afterwards. The alarm inverts the whole panel on each blink;
+   * the hold is dim text on black.
+   */
+  alarm?: boolean;
 }
 
 /**
@@ -69,9 +75,21 @@ function elementsFor(state: RenderState): DisplayElement[] {
   const text = expired ? `${snapshot.label} DONE` : formatDuration(snapshot.remainingMs);
   const barWidth = expired ? 0 : Math.max(0, Math.min(WIDTH, Math.round(WIDTH * snapshot.fraction)));
 
+  // Expiry has three looks, not two. During the alarm the panel *inverts* on
+  // each blink — a solid field of the timer's colour with the text knocked out
+  // black, alternating with the same text lit on black. Inverting the whole
+  // 72x16 field is far more noticeable across a room than blinking text alone,
+  // which is the entire job of an alarm. Once the alarm ends, "DONE" stays up
+  // dim until it is acknowledged or released.
+  const alarming = expired && state.alarm === true;
+  const inverted = alarming && blinkOn;
+
   let timeColor: string;
-  if (expired) timeColor = blinkOn ? '#000000FF' : withAlpha(snapshot.color, '66');
-  else if (paused && !blinkOn) timeColor = withAlpha(snapshot.color, DIM_ALPHA);
+  if (expired) {
+    if (inverted) timeColor = '#000000FF';
+    else if (alarming) timeColor = snapshot.color;
+    else timeColor = withAlpha(snapshot.color, '66');
+  } else if (paused && !blinkOn) timeColor = withAlpha(snapshot.color, DIM_ALPHA);
   else timeColor = snapshot.color;
 
   return [
@@ -84,7 +102,7 @@ function elementsFor(state: RenderState): DisplayElement[] {
       height: HEIGHT,
       display: 'front',
       fill: 'solid',
-      fill_colors: [expired ? (blinkOn ? snapshot.color : '#000000FF') : INVISIBLE],
+      fill_colors: [expired ? (inverted ? snapshot.color : '#000000FF') : INVISIBLE],
       border_width: 0,
     },
     {

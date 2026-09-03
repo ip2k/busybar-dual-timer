@@ -361,11 +361,26 @@ MP3, FLAC, OGG, M4A and AIFF need `ffmpeg` installed; WAV in any bit depth or
 sample rate is handled with no external tools. **[Full guide, including
 troubleshooting →](docs/custom-sounds.md)**
 
-`flashSeconds` bounds the **alarm**, not the message: after it, `DONE` stays on
-screen — dimmed — until you press something. A finished timer that quietly
-reverted to `00:00` would look identical to one that was never started. If the
-timer expires while the lever is elsewhere, the announcement is deferred rather
-than spent, so you get it when you come back.
+An expiry has three stages:
+
+| Stage | Lasts | Looks like |
+| --- | --- | --- |
+| **alarm** | `flashSeconds` | the panel **inverts** at `flashHz` — a solid field of the timer's colour with `DONE` knocked out black, alternating with `DONE` lit on black |
+| **hold** | `holdSeconds` | `DONE` stays up, dimmed |
+| **released** | — | back to the timer |
+
+Inverting the whole 72×16 field is far more noticeable across a room than
+blinking text, which is the entire job of an alarm. Set `flashHz: 0` to hold the
+inverted field steady instead.
+
+The hold matters because a finished timer that reverted straight to `00:00`
+looks identical to one that was never started. But holding forever is worse — it
+squats the panel and the Bar stops being useful for anything else — so the
+screen is handed back after `holdSeconds` (default 300). Set it to `null` to
+hold until acknowledged. Pressing anything dismisses it immediately either way.
+
+If the timer expires while the lever is elsewhere, the whole announcement is
+deferred rather than spent, so you get it when you come back.
 
 Set `"mode": "none"` for a silent flash, or use one of the device's own sounds
 with `"mode": "stock", "stockPath": "shared/volume_change.snd"`.

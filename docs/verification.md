@@ -199,6 +199,31 @@ and `--color-error-500: #E60022` for the expiry alarm.
 Verified on the panel: label in busy_regular_5, time in busy_bold_10, brand blue
 `2b7fff`, with `auto` brightness applied over a previous value of 5.
 
+### The expiry alarm inverts, and releases the screen (2026-09-03)
+
+Two problems with the first attempt, both found in use.
+
+**It squatted the panel.** "DONE" held until acknowledged, so a finished timer
+nobody pressed left the Bar showing it indefinitely — the device stopped being
+usable for anything else. `expiry.holdSeconds` (default 300) now bounds it.
+Verified: alarm, then a dim held "DONE", then `[expiry] released the screen after
+holding DONE for 8s` and back to the timer.
+
+**It did not read as an alarm.** Holding a steady field is calm, which is the
+opposite of what an alarm wants. The panel now **inverts** at `flashHz` during
+the alarm window — a solid field of the timer's colour with the text knocked out
+black, alternating with the text lit on black. Sampled on hardware:
+
+```
+ 6.2s lit=1014  INVERTED (solid field)
+ 6.7s lit= 138  text on black
+ 7.2s lit=1014  INVERTED (solid field)
+ 7.7s lit= 138  text on black
+```
+
+1014 of 1152 pixels lit against 138 is a much larger visual delta than blinking
+text alone, and it is legible from across a room.
+
 ### A finished timer stays finished (2026-09-03)
 
 Reported from use: after expiring while the lever was away, flipping back showed
