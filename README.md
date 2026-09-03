@@ -322,6 +322,12 @@ MP3, FLAC, OGG, M4A and AIFF need `ffmpeg` installed; WAV in any bit depth or
 sample rate is handled with no external tools. **[Full guide, including
 troubleshooting →](docs/custom-sounds.md)**
 
+`flashSeconds` bounds the **alarm**, not the message: after it, `DONE` stays on
+screen — dimmed — until you press something. A finished timer that quietly
+reverted to `00:00` would look identical to one that was never started. If the
+timer expires while the lever is elsewhere, the announcement is deferred rather
+than spent, so you get it when you come back.
+
 Set `"mode": "none"` for a silent flash, or use one of the device's own sounds
 with `"mode": "stock", "stockPath": "shared/volume_change.snd"`.
 

@@ -163,6 +163,30 @@ redraw interval. Documented as a limitation rather than half-built.
 **Chimes.** A's and B's expiry sounds were confirmed audibly different — A rises,
 B falls a fourth lower.
 
+### A finished timer stays finished (2026-09-03)
+
+Reported from use: after expiring while the lever was away, flipping back showed
+a bare `00:00` with no sign anything had happened.
+
+Two causes. The `flashSeconds` window was counting down while the widget was
+hidden, so the announcement was *spent* on nobody; and once that window elapsed
+the timer fell back to an idle `00:00`, which is indistinguishable from a timer
+that was never started.
+
+Now the announcement is deferred while hidden, and `flashSeconds` bounds the
+*alarm* rather than the message. Verified on hardware with a 6 s timer and a 5 s
+alarm:
+
+| Time | Panel |
+| --- | --- |
+| 0–4 s | counting down |
+| 6–10 s | alarm — full-brightness panel, 1070 lit |
+| 12 s onward | **`A DONE` held**, dim (82 lit) and legible, indefinitely |
+
+The alarm is loud and brief; the message is quiet and permanent, until someone
+presses something. A bright block left on a desk forever would be obnoxious, and
+a silent revert to `00:00` loses the result.
+
 ### Expiry is silent when the lever is elsewhere (2026-09-03)
 
 A real bug, spotted from use and confirmed by reading the code: the display and

@@ -247,6 +247,10 @@ class DualTimerApp {
     if (this.timer.checkExpiry()) this.onExpired();
 
     if (this.timer.currentPhase === 'expired' && this.expiryStartedAt !== null) {
+      // Don't let the alarm burn down while nobody can see or hear it. If the
+      // timer finished with the lever elsewhere, the announcement is deferred
+      // rather than spent, so it happens when you come back.
+      if (!this.onScreen) this.expiryStartedAt = monotonicMs();
       const elapsed = monotonicMs() - this.expiryStartedAt;
       const { sound } = this.config.expiry;
       // The sound belongs to whichever timer expired, so A and B are
@@ -271,8 +275,12 @@ class DualTimerApp {
         });
       }
       if (elapsed >= this.config.expiry.flashSeconds * 1000) {
-        this.dismissExpiry();
+        // `flashSeconds` bounds the *alarm*, not the message. Auto-advancing is
+        // an explicit opt-in; otherwise the DONE screen stays until someone
+        // presses something. A finished timer that quietly reverts to 00:00
+        // is indistinguishable from one that was never started.
         if (this.config.behavior.autoAdvanceOnExpiry) {
+          this.dismissExpiry();
           this.timer.switchTimer(false);
           this.timer.toggle();
           log('[expiry] auto-advanced to the other timer');
@@ -318,9 +326,18 @@ class DualTimerApp {
   private blinkOn(): boolean {
     const phase = this.timer.currentPhase;
     if (phase === 'expired') {
-      // flashHz 0 means hold "DONE" steady rather than strobing. That is the
-      // default: a finished timer wants to be readable, and a 72x16 panel
-      // blinking at 3Hz across the desk is more irritating than informative.
+      // The alarm window is loud: a full-brightness panel, optionally strobing.
+      // After it, "DONE" stays up but calms down to dim text on black — it has
+      // to persist so a finished timer is never mistaken for one that was never
+      // started, and a bright block left on a desk indefinitely is obnoxious.
+      const alarming =
+        this.expiryStartedAt !== null &&
+        monotonicMs() - this.expiryStartedAt < this.config.expiry.flashSeconds * 1000;
+      if (!alarming) return false;
+
+      // flashHz 0 holds it steady rather than strobing. That is the default: a
+      // finished timer wants to be readable, and a 72x16 panel blinking at 3Hz
+      // across the desk is more irritating than informative.
       if (this.config.expiry.flashHz <= 0) return true;
       const period = 1000 / this.config.expiry.flashHz;
       return Math.floor(monotonicMs() / (period / 2)) % 2 === 0;
