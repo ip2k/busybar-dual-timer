@@ -114,7 +114,7 @@ function elementsFor(state: RenderState): DisplayElement[] {
 
 export function buildPayload(
   state: RenderState,
-  options: { applicationName: string; priority: number; ledColor?: string; ledWhileRunning?: boolean },
+  options: { applicationName: string; priority: number; ledColor?: string; ledBlink?: boolean },
 ): DrawPayload {
   const { phase, ledColor } = state.snapshot;
   const expired = phase === 'expired';
@@ -124,11 +124,11 @@ export function buildPayload(
     elements: elementsFor(state),
   };
 
-  // The firmware owns the blink pattern; all we choose is the colour, and
-  // whether it blinks at all. Expiry uses the alarm colour, a running timer uses
-  // its own so A and B are tellable apart without reading the panel.
-  if (expired) payload.led_notification_color = options.ledColor ?? ledColor;
-  else if (options.ledWhileRunning && phase === 'running') payload.led_notification_color = ledColor;
+  // Including this field fires the firmware's Notification preset: three blinks
+  // at maximum brightness, in this colour. That is the only light behaviour the
+  // HTTP API can reach — there is no steady-on and no pattern control. The
+  // caller decides *when* to fire it; see `behavior.ledMode`.
+  if (options.ledBlink) payload.led_notification_color = expired ? (options.ledColor ?? ledColor) : ledColor;
   return payload;
 }
 

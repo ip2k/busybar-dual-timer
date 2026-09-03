@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 export type ButtonName = 'ok' | 'back' | 'start';
 export type SoundMode = 'asset' | 'stock' | 'none';
+export type LedMode = 'off' | 'transitions' | 'running';
 
 /** A tone in the synthesised chime. */
 export interface ToneConfig {
@@ -74,8 +75,22 @@ export interface Config {
      * device UI). 0 disables it.
      */
     reassertEveryMs: number;
-    /** Blink the active timer's LED colour while it runs, not just on expiry. */
-    ledWhileRunning: boolean;
+    /**
+     * How to drive the START button LED.
+     *
+     * The HTTP API reaches exactly one of the firmware's light presets:
+     * `Notification`, which is **three blinks at maximum brightness** in a
+     * colour of your choosing. There is no steady-on and no pattern control —
+     * see `docs/busy-bar-api.md`.
+     *
+     * - `running`   re-fire it on every redraw while a timer runs, which reads
+     *               as continuous flashing in that timer's colour.
+     * - `transitions` fire it once when something happens — started, switched,
+     *               expired — so you get three clean blinks and then quiet.
+     *               Closer to what a "notification" preset is for.
+     * - `off`       never touch the LED.
+     */
+    ledMode: LedMode;
     /**
      * Only show the widget when the physical lever is in this position, so the
      * lever picks between the device's own apps and this timer.
@@ -132,7 +147,7 @@ const DEFAULTS: Config = {
     startPaused: true,
     maxEventsPerMessage: 8,
     reassertEveryMs: 2000,
-    ledWhileRunning: true,
+    ledMode: 'running',
     activeSwitchPosition: null,
   },
   expiry: {
@@ -215,6 +230,10 @@ function validate(cfg: Config): void {
       "behavior.activeSwitchPosition must be null or one of 'busy', 'custom', 'off', 'apps', 'settings'",
     );
   }
+  assert(
+    ['off', 'transitions', 'running'].includes(cfg.behavior.ledMode),
+    "behavior.ledMode must be 'off', 'transitions' or 'running'",
+  );
   assert(cfg.behavior.reassertEveryMs >= 0, 'behavior.reassertEveryMs must be >= 0 (0 disables it)');
   assert(cfg.behavior.maxEventsPerMessage >= 0, 'behavior.maxEventsPerMessage must be >= 0 (0 disables the guard)');
   assert(cfg.expiry.flashHz >= 0, 'expiry.flashHz must be >= 0 (0 holds DONE steady)');

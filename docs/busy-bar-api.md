@@ -393,6 +393,79 @@ No code changes between them beyond the base URL.
   those instead of rendering our own display was never explored and might give
   a more native-feeling result.
 
+## The status LED: what is actually reachable
+
+Read from the firmware source rather than inferred, which settles several
+questions. See `applications/services/status_lights/` in
+[`busybar-firmware`](https://github.com/busy-app/busybar-firmware).
+
+The firmware has six light presets:
+
+```c
+StatusLightsPresetOff,              /**< Status lights off */
+StatusLightsPresetStaticColor,      /**< Static color */
+StatusLightsPresetFade,             /**< White fade pattern */
+StatusLightsPresetRainbowGradient,  /**< Rainbow gradient pattern */
+StatusLightsPresetBlink,            /**< Blink pattern */
+StatusLightsPresetNotification,     /**< Notification pattern - 3 blinks with maximum brightness */
+```
+
+**The HTTP API reaches exactly one of them.** `POST /api/display/draw` with
+`led_notification_color` runs `StatusLightsPresetNotification` — hardcoded, in
+`api_display.c`:
+
+```c
+status_lights_run_preset(status_lights, StatusLightsPresetNotification, ctx->led_color);
+```
+
+So over HTTP you choose **a colour** and get **three blinks at maximum
+brightness**. Nothing else. `StaticColor`, `Blink`, `Fade` and
+`RainbowGradient` all exist in the firmware and none has an HTTP route.
+
+Consequences worth knowing:
+
+- **There is no steady-on LED over HTTP.** Anything needing a held colour —
+  Morse, a persistent status light, a progress indication — cannot be built
+  properly. Each "on" you can produce is a three-blink animation.
+- **A "continuous" flash is really a re-trigger.** Sending the field on every
+  redraw restarts the three-blink animation each time, which reads as constant
+  flashing. That works, but know that it is what you are doing.
+- **One event, one field.** For a clean acknowledgement, send it once on the
+  event rather than on every frame.
+
+### The one steady light you can get, and its price
+
+The built-in BUSY timer *does* set a steady LED, from
+`busy_timer_status_lights.c`:
+
+| BUSY timer state | Preset | Colour |
+| --- | --- | --- |
+| Idle | `Off` | — |
+| Work | `StaticColor` | `RGB(150, 0, 0)` — steady red |
+| Rest | `StaticColor` | `RGB(10, 150, 5)` — steady green |
+
+Those colours are compile-time constants. The `theme` setting in
+`busy_bar_settings` does **not** touch the lights (checked). So driving
+`/api/busy/*` gets you a steady LED in **red or green only**, and hands the
+device's own timer the session in exchange.
+
+### The CLI can do it, but it is a different transport
+
+`status_lights_cli.c` runs `StatusLightsPresetStaticColor` with an arbitrary
+colour — a steady light in any colour, over the USB serial CLI. Not reachable
+over HTTP, so no use to a program talking to the Bar across a network, but worth
+knowing it exists.
+
+### Summary
+
+| Want | Over HTTP? |
+| --- | --- |
+| Any colour, three blinks | **yes** — `led_notification_color` |
+| Steady red or green | **yes** — via `/api/busy/*`, giving up the session |
+| Steady arbitrary colour | no (CLI only) |
+| Blink / fade / rainbow presets | no |
+| Custom patterns, Morse | **no** |
+
 ## The official ecosystem, and why this project doesn't use it
 
 BUSY publish more than the docs suggest. As of September 2026, `busy-app` has

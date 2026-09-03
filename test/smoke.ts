@@ -292,26 +292,33 @@ for (const element of payload.elements) {
   assert.equal(sets.size, 1, `element id set must never change; saw ${[...sets].join(' | ')}`);
 }
 
-// Per-timer LED colour: the active timer's colour identifies it without
-// reading the panel.
+// Per-timer LED colour. Including the field fires the firmware's Notification
+// preset -- three blinks in that colour -- so the payload must carry the ACTIVE
+// timer's colour, and must be absent when the caller doesn't want a blink.
 {
   const opts = { applicationName: 'dual_timer', priority: 95 };
-  const running = (ledColor: string) => buildPayload(
-    { snapshot: { index: 0, label: 'A', color: '#3BA7FFFF', ledColor, phase: 'running', remainingMs: 1, totalMs: 2, fraction: 0.5 }, blinkOn: true },
-    { ...opts, ledWhileRunning: true },
-  ).led_notification_color;
-  assert.equal(running('#3BA7FFFF'), '#3BA7FFFF');
-  assert.equal(running('#33D17AFF'), '#33D17AFF', 'timer B must blink its own colour');
+  const snap = (ledColor: string, phase: 'running' | 'idle') => ({
+    index: 0, label: 'A', color: '#3BA7FFFF', ledColor,
+    phase, remainingMs: 1, totalMs: 2, fraction: 0.5,
+  });
 
-  // Off by config, and never while idle.
-  assert.equal(buildPayload(
-    { snapshot: { index: 0, label: 'A', color: '#3BA7FFFF', ledColor: '#3BA7FFFF', phase: 'running', remainingMs: 1, totalMs: 2, fraction: 0.5 }, blinkOn: true },
-    { ...opts, ledWhileRunning: false },
-  ).led_notification_color, undefined);
-  assert.equal(buildPayload(
-    { snapshot: { index: 0, label: 'A', color: '#3BA7FFFF', ledColor: '#3BA7FFFF', phase: 'idle', remainingMs: 2, totalMs: 2, fraction: 1 }, blinkOn: true },
-    { ...opts, ledWhileRunning: true },
-  ).led_notification_color, undefined, 'an idle timer must not blink the LED');
+  assert.equal(
+    buildPayload({ snapshot: snap('#3BA7FFFF', 'running'), blinkOn: true }, { ...opts, ledBlink: true })
+      .led_notification_color,
+    '#3BA7FFFF',
+  );
+  assert.equal(
+    buildPayload({ snapshot: snap('#33D17AFF', 'running'), blinkOn: true }, { ...opts, ledBlink: true })
+      .led_notification_color,
+    '#33D17AFF',
+    'timer B must announce its own colour',
+  );
+  assert.equal(
+    buildPayload({ snapshot: snap('#3BA7FFFF', 'running'), blinkOn: true }, { ...opts, ledBlink: false })
+      .led_notification_color,
+    undefined,
+    'no field means the LED is left alone',
+  );
 }
 console.log('render: ok');
 

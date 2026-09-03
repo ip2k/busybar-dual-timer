@@ -376,34 +376,44 @@ exist**. It never returns the `404` its own spec documents. The only way to
 verify audio is for a person to listen to the Bar. Don't trust the status code —
 it cost this project a wrong "verified" entry.
 
-### What the LED can't do
+### What the LED can and can't do
 
-The status LED in the START button is controlled by exactly one field on a draw:
-`led_notification_color`, an `#RRGGBBAA` value. From the device's own spec:
+Answered from the [firmware source](https://github.com/busy-app/busybar-firmware),
+not guesswork. The firmware has six light presets — off, static colour, fade,
+rainbow, blink, and notification — and **the HTTP API reaches exactly one**:
 
-> Color to blink the status LED. If not specified, the LED will not blink.
+```c
+status_lights_run_preset(status_lights, StatusLightsPresetNotification, ctx->led_color);
+```
 
-That is the entire surface. You choose **a colour**, and **whether it blinks at
-all**. You do not get:
+`Notification` is *three blinks at maximum brightness*. So over the network you
+pick **a colour**, and that is the whole of it. There is no steady-on, no rate,
+no pattern.
 
-- a steady-on LED — the only "on" state is the firmware's own blink
-- the blink rate, duty cycle, or any pattern
-- independent control of the LED separately from a draw
+| Want | Over HTTP? |
+| --- | --- |
+| Any colour, three blinks | **yes** — this is `timers[].ledColor` |
+| Steady red or green | via `/api/busy/*`, giving up the device's session |
+| Steady arbitrary colour | no — USB serial CLI only |
+| Custom patterns, **Morse** | **no** |
 
-Confirmed on hardware: with `ledColor` set per timer, the LED showed **flashing
-light blue** while A ran and **flashing neon green** while B ran. The colour is
-ours; the flashing is not.
+Which settles Morse: every "on" you can produce is a three-blink animation, so
+dots and dashes would be built out of flashing. Not worth faking.
 
-So **per-timer colours work** (that's `timers[].ledColor`), but patterns —
-including ideas like blinking A and B in Morse — can't be done properly. The
-best available approximation is to add and remove the colour across successive
-draws, which gives on/off segments no finer than the redraw interval, and each
-"on" is the firmware blinking rather than a clean lit stretch. Dots and dashes
-made of blinking are not really dots and dashes.
+`behavior.ledMode` picks how the one available preset is used:
 
-If BUSY expose direct LED control later — likely with the on-device SDK — this
-becomes straightforward, and `timers[].ledColor` is the natural place to grow a
-`ledPattern` beside it.
+| Mode | Behaviour |
+| --- | --- |
+| `running` (default) | re-fire on every redraw while a timer runs — reads as continuous flashing in that timer's colour |
+| `transitions` | fire once when a timer starts, is switched, or expires — three clean blinks, then quiet |
+| `off` | never touch the LED |
+
+`running` is what you see by default, and it's worth knowing it's a *re-trigger*
+of the three-blink animation rather than a genuine continuous blink.
+
+If BUSY expose the other presets later — likely with the on-device SDK, where
+`status_lights_run_preset` is a direct call — patterns become straightforward,
+and `ledMode` is the natural place for them.
 
 ### Robustness
 

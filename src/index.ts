@@ -38,6 +38,13 @@ class DualTimerApp {
   private lastSoundAt = 0;
   private drawing = false;
   private lastDrawAt = 0;
+  /**
+   * Set when something worth announcing happened. The LED preset is three
+   * blinks, so in `transitions` mode it fires once per event rather than being
+   * re-triggered by every redraw.
+   */
+  private ledPending = false;
+  private lastLedPhase = '';
   /** Last lever position seen. Null until it moves — no endpoint reports it. */
   private switchPosition: string | null = null;
   private cleared = false;
@@ -209,6 +216,7 @@ class DualTimerApp {
         break;
       case 'switch': {
         this.timer.switchTimer(this.config.behavior.resetOnSwitch);
+        this.ledPending = true; // the active timer changed, so its colour should announce itself
         const snapshot = this.timer.snapshot();
         log(`[gesture] dial click -> timer ${snapshot.label} (${formatDuration(snapshot.remainingMs)})`);
         break;
@@ -276,6 +284,30 @@ class DualTimerApp {
     this.lastSoundAt = 0;
   }
 
+  /**
+   * Should this draw carry the LED colour?
+   *
+   * `running` re-fires the three-blink preset on every redraw, which reads as
+   * continuous flashing. `transitions` fires it once per state change, which is
+   * what the preset is actually for. Consuming the flag here is what stops a
+   * single event from blinking on every subsequent frame.
+   */
+  private wantsLedBlink(): boolean {
+    const { ledMode } = this.config.behavior;
+    if (ledMode === 'off') return false;
+
+    const phase = this.timer.currentPhase;
+    if (ledMode === 'running') return phase === 'running' || phase === 'expired';
+
+    if (phase !== this.lastLedPhase) {
+      this.lastLedPhase = phase;
+      this.ledPending = true;
+    }
+    if (!this.ledPending) return false;
+    this.ledPending = false;
+    return phase === 'running' || phase === 'expired';
+  }
+
   private blinkOn(): boolean {
     const phase = this.timer.currentPhase;
     if (phase === 'expired') {
@@ -319,7 +351,7 @@ class DualTimerApp {
         applicationName: this.config.app.name,
         priority: this.config.app.priority,
         ledColor: this.config.expiry.ledColor,
-        ledWhileRunning: this.config.behavior.ledWhileRunning,
+        ledBlink: this.wantsLedBlink(),
       },
     );
     const sig = signature(payload);
