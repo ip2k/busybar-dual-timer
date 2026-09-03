@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import type { SwitchPosition } from './proto.ts';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -294,19 +295,75 @@ function validate(cfg: Config): void {
   }
 }
 
-export function loadConfig(path?: string): Config {
-  const file = resolve(path ?? process.env.BUSY_TIMER_CONFIG ?? `${PROJECT_ROOT}/config.json`);
-  let raw: unknown = {};
-  try {
-    raw = JSON.parse(readFileSync(file, 'utf8'));
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    if (err.code !== 'ENOENT') throw new Error(`config: could not read ${file}: ${err.message}`);
-    console.warn(`[config] ${file} not found, using built-in defaults`);
+export interface LoadedConfig {
+  config: Config;
+  /** Where the config was read from, or null when built-in defaults were used. */
+  configPath: string | null;
+  /**
+   * Directories to search for assets (custom sounds), most specific first.
+   *
+   * Assets live next to the *config*, not next to the code. Installed from npm
+   * the code sits in `node_modules`, which is no place to keep a file the user
+   * edits — it is wiped on upgrade and invisible to them.
+   */
+  assetDirs: string[];
+}
+
+/** Where a config may live, in order of precedence. */
+export function configSearchPaths(): string[] {
+  const xdg = process.env.XDG_CONFIG_HOME || resolve(homedir(), '.config');
+  // Deduped: running from the project directory makes the first and last the
+  // same path, and listing it twice in --help just looks broken.
+  return [
+    ...new Set([
+      resolve(process.cwd(), 'config.json'),
+      resolve(xdg, 'busy-dual-timer', 'config.json'),
+      // Alongside the source or an unpacked release tarball.
+      resolve(PROJECT_ROOT, 'config.json'),
+    ]),
+  ];
+}
+
+/**
+ * Load configuration.
+ *
+ * An explicit path — `--config` or `BUSY_TIMER_CONFIG` — must exist; asking for
+ * a file that is not there is an error rather than something to silently ignore.
+ * Otherwise the search paths are tried in turn, and running with none of them is
+ * fine: the defaults target the Bar's fixed USB address, so a fresh `npx` run
+ * works with no configuration at all.
+ */
+export function loadConfig(explicitPath?: string): LoadedConfig {
+  const requested = explicitPath ?? process.env.BUSY_TIMER_CONFIG;
+  let file: string | null = null;
+
+  if (requested) {
+    file = resolve(requested);
+    if (!existsSync(file)) throw new Error(`config: ${file} does not exist`);
+  } else {
+    file = configSearchPaths().find((candidate) => existsSync(candidate)) ?? null;
   }
-  const cfg = merge(DEFAULTS, raw);
-  validate(cfg);
-  return cfg;
+
+  let raw: unknown = {};
+  if (file) {
+    try {
+      raw = JSON.parse(readFileSync(file, 'utf8'));
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      throw new Error(`config: could not read ${file}: ${err.message}`);
+    }
+  }
+
+  const config = merge(DEFAULTS, raw);
+  validate(config);
+
+  const dirs = [file ? dirname(file) : process.cwd(), process.cwd(), PROJECT_ROOT];
+  return { config, configPath: file, assetDirs: [...new Set(dirs)] };
+}
+
+/** The starter config written by `--init`. */
+export function exampleConfig(): string {
+  return `${JSON.stringify(DEFAULTS, null, 2)}\n`;
 }
 
 export { PROJECT_ROOT };

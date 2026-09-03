@@ -1,34 +1,63 @@
 name: Release
 
+# Two ways in, one path through:
+#   - Actions > Release > Run workflow, pick a bump. Everything happens here:
+#     version, tag, push, build, GitHub release, npm publish. Nothing local.
+#   - Or push a v* tag yourself, and the rest still runs.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
     inputs:
-      tag:
-        description: Tag to release (must already exist)
+      bump:
+        description: 'patch, minor, major, or an exact version like 1.2.3'
         required: true
+        default: patch
 
 permissions:
   contents: write
+  id-token: write # npm provenance
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Job-level so the `if:` guards below can actually see it. A step's own env
+    # is not in scope for its own `if:`.
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
+          registry-url: https://registry.npmjs.org
 
-      # Never publish something that does not pass. These are the same steps CI
-      # runs on every push; repeating them here means a tag cannot ship a broken
-      # build just because someone tagged a red commit.
       - run: npm ci
+
+      # Check before versioning. A tag should never be created for a red tree.
       - run: npm run typecheck
       - run: npm test
+
+      - name: Version and tag
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            npm version "${{ github.event.inputs.bump }}" -m "v%s"
+            git push --follow-tags
+            TAG="v$(node -p "require('./package.json').version")"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Releasing $TAG"
+
       - run: npm run build
       - name: Confirm the build produced something runnable
         run: node -e "require('node:fs').accessSync('dist/index.js')"
@@ -36,7 +65,7 @@ jobs:
       - name: Assemble the bundle
         run: |
           set -euo pipefail
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          TAG="${{ steps.version.outputs.tag }}"
           OUT="busy-dual-timer-${TAG}"
           mkdir -p "$OUT"
           cp -r dist "$OUT"/
@@ -48,43 +77,10 @@ jobs:
           mkdir -p "$OUT/assets"
           printf 'Drop a sound file here and point expiry.sound.file at it.\nSee docs/custom-sounds.md.\n' > "$OUT/assets/README.txt"
 
-          cat > "$OUT/QUICKSTART.txt" <<'TXT'
-          busy-dual-timer — quick start
-          =============================
-
-          You need Node 22 or newer. Nothing else: this has no dependencies.
-
-            1. Enable the Bar's HTTP API
-               Connect it by USB, open http://10.0.4.20/ , Network tab,
-               "set password and enable". Over USB no password is needed.
-
-            2. Point it at your Bar
-                 cp config.example.json config.json
-               Edit "host": over USB use 10.0.4.20, over Wi-Fi use the Bar's IP
-               (Settings > Wi-Fi > your network > View IP Address) and put the
-               password you set in "apiToken".
-
-            3. Run it
-                 node dist/index.js
-
-            4. Put the mode lever on CUSTOM.
-
-          Controls
-            START                start / pause
-            scroll wheel click   switch timer A <-> B
-            double-click         reset
-            turn                 +/- 1 minute
-            hold + turn          +/- 5 seconds
-
-          Ctrl-C hands the screen back to the device.
-
-          Full documentation is in README.md and docs/.
-          TXT
-
+          cp QUICKSTART.txt "$OUT"/
           tar -czf "${OUT}.tar.gz" "$OUT"
           sha256sum "${OUT}.tar.gz" > "${OUT}.tar.gz.sha256"
           echo "ASSET=${OUT}.tar.gz" >> "$GITHUB_ENV"
-          echo "TAG=${TAG}" >> "$GITHUB_ENV"
 
       # Prove the artefact runs before handing it to anyone. It cannot reach a
       # Bar from CI, but it must start, read its config and fail on the network
@@ -92,8 +88,11 @@ jobs:
       - name: Smoke-test the bundle
         run: |
           set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
           mkdir -p /tmp/verify && tar xzf "$ASSET" -C /tmp/verify
           cd "/tmp/verify/busy-dual-timer-${TAG}"
+          node dist/index.js --help > /dev/null
+          node dist/index.js --version
           cp config.example.json config.json
           set +e
           OUTPUT=$(timeout 25s node dist/index.js 2>&1)
@@ -102,27 +101,39 @@ jobs:
           if echo "$OUTPUT" | grep -qiE "cannot find module|err_module|syntaxerror|config:"; then
             echo "::error::the bundled build is not runnable"; exit 1
           fi
-          echo "bundle starts and fails only on the network, as expected"
+          echo "bundle starts, --help and --version work, and it fails only on the network"
 
-      - name: Publish the release
+      - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          TAG="${{ steps.version.outputs.tag }}"
           gh release create "$TAG" "$ASSET" "${ASSET}.sha256" \
             --title "$TAG" \
             --generate-notes \
             --notes-file - <<NOTES
-          ## Just want to run it?
-
-          Download \`$ASSET\` below, unpack it, and:
+          ## Install
 
           \`\`\`bash
-          cp config.example.json config.json   # then set your Bar's address
-          node dist/index.js
+          npx busy-dual-timer          # try it, nothing installed
+          npm i -g busy-dual-timer     # or keep it
           \`\`\`
 
-          **Node 22+ is the only requirement** — no \`npm install\`, no build step,
-          no dependencies. See \`QUICKSTART.txt\` inside the archive.
+          Over USB that works with no configuration at all. Otherwise
+          \`busy-dual-timer --init\` writes a starter \`config.json\` beside you.
 
-          Verify the download with \`${ASSET}.sha256\`.
+          Prefer no npm? Download \`$ASSET\`, unpack, and run \`node dist/index.js\`.
+          Node 22+ is the only requirement either way. Verify with \`${ASSET}.sha256\`.
           NOTES
+
+      # Publishing is skipped rather than failed when no token is configured, so
+      # the GitHub release still goes out on a repo that has not opted into npm.
+      - name: Publish to npm
+        if: ${{ env.NPM_TOKEN != '' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish
+
+      - name: Note if npm was skipped
+        if: ${{ env.NPM_TOKEN == '' }}
+        run: echo "::warning::NPM_TOKEN is not set, so npm publish was skipped. The GitHub release was still created."

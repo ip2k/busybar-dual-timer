@@ -1,11 +1,20 @@
-import { existsSync } from 'node:fs';
+#!/usr/bin/env node
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { BusyBarClient, InputStream } from './api.ts';
 import { loadAudioForDevice } from './audio-file.ts';
 import { monotonicMs } from './clock.ts';
 import { generateChime, tonesForSlot } from './chime.ts';
-import { loadConfig, PROJECT_ROOT, type Config, type ToneConfig } from './config.ts';
+import {
+  configSearchPaths,
+  exampleConfig,
+  loadConfig,
+  PROJECT_ROOT,
+  type Config,
+  type LoadedConfig,
+  type ToneConfig,
+} from './config.ts';
 import { GestureRecognizer, type Gesture } from './gestures.ts';
 import { buildPayload, signature, formatDuration } from './render.ts';
 import { DualTimer } from './timers.ts';
@@ -53,9 +62,12 @@ class DualTimerApp {
   private ticker: NodeJS.Timeout | null = null;
 
   private readonly config: Config;
+  private readonly assetDirs: string[];
 
-  constructor(config: Config) {
+  constructor(loaded: LoadedConfig) {
+    const config = loaded.config;
     this.config = config;
+    this.assetDirs = loaded.assetDirs;
     this.client = new BusyBarClient(config.device.host, config.device.apiToken);
     this.timer = new DualTimer(config.timers);
     this.gestures = new GestureRecognizer(config.gestures, (gesture) => this.onGesture(gesture));
@@ -169,8 +181,13 @@ class DualTimerApp {
   private soundDataFor(index: number, file: string | undefined, tones: ToneConfig[] | undefined): Uint8Array {
     const name = file ?? (index === 0 ? this.config.expiry.sound.file : undefined);
     if (name) {
-      const localPath = resolve(PROJECT_ROOT, 'assets', name);
-      if (existsSync(localPath)) {
+      // Look next to the config first, then the working directory, then the
+      // package. Installed from npm the package directory is inside
+      // node_modules, which is not somewhere a user can sensibly keep a sound.
+      const localPath = this.assetDirs
+        .map((dir) => resolve(dir, 'assets', name))
+        .find((candidate) => existsSync(candidate));
+      if (localPath) {
         try {
           // Drop in any ordinary sound file; the device only plays headerless
           // PCM, so convert rather than making people work that out themselves.
@@ -450,8 +467,87 @@ class DualTimerApp {
   }
 }
 
-const config = loadConfig(process.argv[2]);
-const app = new DualTimerApp(config);
+function packageVersion(): string {
+  try {
+    return JSON.parse(readFileSync(resolve(PROJECT_ROOT, 'package.json'), 'utf8')).version ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+const HELP = `busy-dual-timer — two countdowns on a BUSY Bar
+
+  busy-dual-timer [options]
+
+Options
+  --config <path>   config file to use
+  --init            write a starter config.json here and exit
+  --version         print the version and exit
+  --help            show this
+
+Configuration is looked for in this order:
+  --config <path>
+  $BUSY_TIMER_CONFIG
+${configSearchPaths()
+  .map((p) => `  ${p}`)
+  .join('\n')}
+
+Running with none of them is fine: the defaults target the Bar's USB address
+(10.0.4.20), which needs no token and no network setup.
+
+Controls
+  START          start / pause
+  wheel turn     +/- 1 minute        wheel press        switch timer A / B
+  hold + turn    +/- 5 seconds       press twice        reset
+
+Put the mode lever on CUSTOM. Docs: https://github.com/ip2k/busy-dual-timer`;
+
+const argv = process.argv.slice(2);
+const flag = (name: string) => argv.includes(name);
+
+if (flag('--help') || flag('-h')) {
+  console.log(HELP);
+  process.exit(0);
+}
+if (flag('--version') || flag('-v')) {
+  console.log(packageVersion());
+  process.exit(0);
+}
+if (flag('--init')) {
+  const target = resolve(process.cwd(), 'config.json');
+  if (existsSync(target)) {
+    console.error(`${target} already exists — not overwriting it`);
+    process.exit(1);
+  }
+  mkdirSync(resolve(process.cwd(), 'assets'), { recursive: true });
+  writeFileSync(target, exampleConfig());
+  console.log(`Wrote ${target}`);
+  console.log("Set device.host to your Bar's address, then run busy-dual-timer.");
+  process.exit(0);
+}
+
+const configIndex = argv.indexOf('--config');
+if (configIndex !== -1 && !argv[configIndex + 1]) {
+  console.error('--config needs a path');
+  process.exit(1);
+}
+// A bare first argument is still accepted, as earlier versions documented it.
+const configArg =
+  configIndex !== -1 ? argv[configIndex + 1] : argv[0]?.startsWith('-') ? undefined : argv[0];
+
+let loaded: LoadedConfig;
+try {
+  loaded = loadConfig(configArg);
+} catch (error) {
+  console.error('[fatal]', (error as Error).message);
+  process.exit(1);
+}
+log(
+  loaded.configPath
+    ? `[config] ${loaded.configPath}`
+    : '[config] no config file found, using built-in defaults',
+);
+const app = new DualTimerApp(loaded);
 
 let shuttingDown = false;
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

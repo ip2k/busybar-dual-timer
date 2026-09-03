@@ -1,18 +1,48 @@
 {
   "name": "busy-dual-timer",
   "version": "1.0.0",
-  "private": true,
   "description": "Two configurable countdowns on a BUSY Bar. START starts and pauses, the dial switches A/B, double-click resets, and turning it sets the time.",
+  "keywords": [
+    "busy-bar",
+    "busybar",
+    "timer",
+    "pomodoro",
+    "led",
+    "cli"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ip2k/busy-dual-timer.git"
+  },
+  "homepage": "https://github.com/ip2k/busy-dual-timer#readme",
+  "bugs": {
+    "url": "https://github.com/ip2k/busy-dual-timer/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=22"
   },
+  "bin": {
+    "busy-dual-timer": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "config.example.json",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "node --experimental-strip-types src/index.ts",
     "test": "node --experimental-strip-types test/smoke.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "devDependencies": {
     "@types/node": "^22.15.1",

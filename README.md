@@ -8,7 +8,7 @@ Timer **A** for work, timer **B** for a break. Click the dial to switch between
 them; each one remembers where it was. Turn the dial to set the time without
 touching a config file.
 
-![The timer running on a BUSY Bar](docs/demo.gif)
+![The timer running on a BUSY Bar](https://raw.githubusercontent.com/ip2k/busy-dual-timer/main/docs/demo.gif)
 
 *Real frames captured off the device: timer A counting, a dial click switching to
 B, switching back to find A exactly where it was, and the finished timer holding
@@ -29,7 +29,7 @@ flash and nothing to undo — stop the program and the Bar goes back to normal.
 
 ## Controls
 
-![The BUSY Bar's controls](docs/controls.jpg)
+![The BUSY Bar's controls](https://raw.githubusercontent.com/ip2k/busy-dual-timer/main/docs/controls.jpg)
 
 | Control | Action |
 | --- | --- |
@@ -68,22 +68,40 @@ never both be draining, so time is never charged to the wrong one.
 
 ## Just want to run it?
 
-You don't need to clone anything or install a toolchain.
-
-1. Grab the latest `busy-dual-timer-vX.Y.Z.tar.gz` from
-   **[Releases](https://github.com/ip2k/busy-dual-timer/releases)** and unpack it.
-2. Point it at your Bar and run it:
-
 ```bash
-cp config.example.json config.json   # then set "host" to your Bar's address
-node dist/index.js
+npx busy-dual-timer
 ```
 
-3. Put the mode lever on **CUSTOM**.
+That's the whole thing over USB — the defaults target the Bar's fixed USB
+address (`10.0.4.20`), which needs no password and no network setup. Plug it in,
+run that, put the mode lever on **CUSTOM**.
 
-**Node 22 or newer is the only requirement** — there are no dependencies, so
-there's no `npm install` and no build step. `QUICKSTART.txt` inside the archive
-repeats this, and each release ships a `.sha256` to verify the download.
+To keep it, or to run it over Wi-Fi:
+
+```bash
+npm install -g busy-dual-timer
+busy-dual-timer --init      # writes config.json in the current directory
+busy-dual-timer             # runs using it
+```
+
+`--init` writes a fully commented starting point. Set `device.host` to your
+Bar's IP and `device.apiToken` to the password you set when enabling the HTTP
+API. Config is looked for in this order:
+
+| | |
+| --- | --- |
+| `--config <path>` | an explicit file |
+| `$BUSY_TIMER_CONFIG` | environment override |
+| `./config.json` | the directory you run from |
+| `~/.config/busy-dual-timer/config.json` | per-user |
+| *(none)* | built-in defaults — works over USB |
+
+**Node 22 or newer is the only requirement.** There are no dependencies, so
+there is no build step and nothing to compile.
+
+Prefer no npm at all? Every release also ships a tarball on the
+**[Releases](https://github.com/ip2k/busy-dual-timer/releases)** page — unpack
+it and run `node dist/index.js`. Each one has a `.sha256` beside it.
 
 Everything below is for running from source or contributing.
 

@@ -1,0 +1,30 @@
+busy-dual-timer — quick start
+=============================
+
+You need Node 22 or newer. Nothing else: this has no dependencies.
+
+  npx busy-dual-timer
+
+Over USB that is the whole thing — the defaults target the Bar's fixed USB
+address (10.0.4.20), which needs no password and no network setup.
+
+Over Wi-Fi, or to change anything:
+
+  busy-dual-timer --init      writes config.json here
+  busy-dual-timer             runs using it
+
+Set "host" to your Bar's IP (Settings > Wi-Fi > your network > View IP Address)
+and "apiToken" to the password you set when enabling the HTTP API.
+
+Put the mode lever on CUSTOM.
+
+Controls
+  START          start / pause
+  wheel turn     +/- 1 minute
+  hold + turn    +/- 5 seconds
+  wheel press    switch timer A / B
+  press twice    reset
+
+Ctrl-C hands the screen back to the device.
+
+Full documentation: https://github.com/ip2k/busy-dual-timer

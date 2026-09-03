@@ -88,25 +88,38 @@ Nothing in CI needs a BUSY Bar.
 
 ### Cutting a release
 
-Releases are tag-driven. Tag a commit that is already green and push the tag:
+**Releases happen entirely in CI — nothing is built, tagged or published from a
+laptop.** Go to **Actions → Release → Run workflow**, choose `patch`, `minor`,
+`major` or an exact version, and run it. That single job:
 
-```bash
-git tag -a v1.2.3 -m "v1.2.3 — what changed"
-git push origin v1.2.3
-```
+1. Runs `npm ci`, typecheck and the test suite **before** versioning, so a tag
+   is never created for a red tree.
+2. Runs `npm version`, which commits the bump and creates the tag, then pushes
+   both.
+3. Builds, and checks `dist/index.js` actually exists.
+4. Assembles the release bundle: `dist/`, config example, README, LICENSE, the
+   systemd unit, `docs/`, an `assets/` directory for custom sounds, and
+   `QUICKSTART.txt`.
+5. **Smoke-tests the bundle it just built** — unpacks it, runs `--help` and
+   `--version`, then starts it and fails the release if it dies on a missing
+   module, a syntax error or a bad config rather than on the network. Something
+   that cannot start should never reach a release page.
+6. Publishes the GitHub release with the tarball and a `.sha256`.
+7. Publishes to npm, with provenance.
 
-`.github/workflows/release.yml` then:
+Pushing a `v*` tag by hand runs the same job from step 3, for anyone who
+prefers that.
 
-1. **Re-runs the whole check suite.** A tag cannot ship a broken build just
-   because someone tagged a red commit.
-2. Builds and assembles a bundle: `dist/`, `package.json`,
-   `config.example.json`, `README.md`, `LICENSE`, the systemd unit, `docs/`, an
-   empty `assets/` for custom sounds, and a `QUICKSTART.txt`.
-3. **Smoke-tests the bundle it just built** — unpacks it, runs
-   `node dist/index.js`, and fails the release if it dies on a missing module,
-   a syntax error or a bad config rather than on the network. An artefact that
-   cannot start should never reach a release page.
-4. Publishes the release with the tarball and a `.sha256`.
+#### npm publishing
+
+Step 7 is skipped, with a warning rather than a failure, unless an `NPM_TOKEN`
+repository secret exists — so a fork without npm access still gets working
+GitHub releases. To enable it, create a **granular automation token** on npm
+with publish rights to this package and add it as `NPM_TOKEN` under
+Settings → Secrets and variables → Actions.
+
+Publishing to npm is close to permanent: unpublishing is restricted after 72
+hours and the name stays burned. GitHub releases can be deleted freely.
 
 The point of the bundle is that someone who only wants the timer needs Node 22+
 and nothing else — no clone, no `npm install`, no toolchain.
