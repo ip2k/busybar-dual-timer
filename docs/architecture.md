@@ -8,7 +8,7 @@ button events off the socket and pushes pixels back over HTTP. This program is
 that process.
 
 ```
-   BUSY Bar (192.168.1.163)
+   BUSY Bar (<bar-ip>)
         |  ws://.../api/status/ws   -- protobuf State messages (input, frames, ...)
         v
    InputStream (api.ts) --> proto.ts --> InputEvent

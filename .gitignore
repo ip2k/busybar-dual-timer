@@ -1,3 +1,17 @@
 node_modules/
 dist/
+
+# Your own device address and API token live here. Copy config.example.json to
+# config.json and edit that; the example stays generic so the repo does not
+# carry anyone's network details.
+config.json
+
+# Custom sounds you drop in. The built-in chime is synthesised, so the repo
+# ships no audio.
 assets/*.wav
+assets/*.mp3
+assets/*.flac
+assets/*.ogg
+assets/*.m4a
+assets/*.aiff
+assets/*.snd

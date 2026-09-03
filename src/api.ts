@@ -107,6 +107,12 @@ export class BusyBarClient {
   }
 }
 
+/**
+ * How far behind the newest device timestamp a message may be before it is
+ * treated as stale rather than current.
+ */
+const STALE_MESSAGE_MS = 5000;
+
 export interface StreamHandlers {
   /** `atMs` is the device's own clock for this message, or 0 if absent. */
   onInput: (event: InputEvent, atMs: number) => void;
@@ -121,6 +127,9 @@ export interface StreamHandlers {
 export class InputStream {
   private socket: WebSocket | null = null;
   private backoffMs = 500;
+  /** Newest device timestamp seen, for spotting stale or replayed messages. */
+  private newestDeviceMs = 0;
+  private clockReported = false;
   private stopped = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
 
@@ -165,6 +174,9 @@ export class InputStream {
 
     socket.onopen = () => {
       this.backoffMs = 500;
+      // A device that rebooted comes back with a clock behind ours; keeping the
+      // old high-water mark would reject everything it sends from then on.
+      this.newestDeviceMs = 0;
       // The device starts streaming once it gets this handshake.
       socket.send(JSON.stringify({ enable: this.options.enableFrames ?? true }));
       this.handlers.onOpen?.();
@@ -174,6 +186,27 @@ export class InputStream {
       if (typeof event.data === 'string') return;
       try {
         const { timestampMs, events } = parseState(new Uint8Array(event.data as ArrayBuffer));
+
+        if (events.length > 0 && !this.clockReported) {
+          this.clockReported = true;
+          // Worth saying out loud: without a device clock, every interval falls
+          // back to arrival time, which a laggy link distorts.
+          if (timestampMs > 0) console.log(`[stream] device clock present (${timestampMs})`);
+          else console.warn('[stream] device sent no timestamp — gesture timing will use arrival time');
+        }
+
+        // Out-of-order or replayed delivery: a message whose device clock is
+        // well behind the newest we have seen did not just happen, whatever the
+        // network says. Acting on it would apply stale input to current state.
+        if (timestampMs > 0) {
+          if (timestampMs < this.newestDeviceMs - STALE_MESSAGE_MS) {
+            console.warn(
+              `[stream] dropped a stale message (device clock ${this.newestDeviceMs - timestampMs}ms behind)`,
+            );
+            return;
+          }
+          if (timestampMs > this.newestDeviceMs) this.newestDeviceMs = timestampMs;
+        }
 
         // The device has been seen delivering a large backlog of historical
         // input in a single message. Acting on it would fire dozens of

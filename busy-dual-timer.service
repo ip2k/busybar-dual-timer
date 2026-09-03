@@ -6,7 +6,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=likwid
+# Change to the user that owns WorkingDirectory.
+User=busy
 WorkingDirectory=/opt/busy-dual-timer
 ExecStart=/usr/bin/node dist/index.js
 Restart=always

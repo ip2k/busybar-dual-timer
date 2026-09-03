@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { parseInputEvents } from '../src/proto.ts';
 import { GestureRecognizer, type Gesture } from '../src/gestures.ts';
 import { parseState } from '../src/proto.ts';
+import { decodeWav, detectFormat, ffmpegCommand, isWav, toDevicePcm } from '../src/audio.ts';
 import { DualTimer } from '../src/timers.ts';
 import { formatDuration, buildPayload } from '../src/render.ts';
 import { generateChime } from '../src/chime.ts';
@@ -221,5 +222,114 @@ const chime = generateChime();
 assert.equal(chime.byteLength % 2, 0);
 assert.ok(chime.byteLength > 44100, 'chime should be roughly half a second of 44.1kHz mono');
 console.log('chime: ok');
+
+// 8. WAV conversion. Build real RIFF files in memory and check we land on
+//    s16le mono 44.1kHz, because that is the only thing the device plays.
+function buildWav(opts: {
+  sampleRate: number;
+  channels: number;
+  bitDepth: number;
+  format?: number;
+  frames: number;
+}): Uint8Array {
+  const { sampleRate, channels, bitDepth, frames } = opts;
+  const format = opts.format ?? 1;
+  const bytesPerSample = bitDepth / 8;
+  const dataBytes = frames * channels * bytesPerSample;
+  const buf = Buffer.alloc(44 + dataBytes);
+  buf.write('RIFF', 0);
+  buf.writeUInt32LE(36 + dataBytes, 4);
+  buf.write('WAVE', 8);
+  buf.write('fmt ', 12);
+  buf.writeUInt32LE(16, 16);
+  buf.writeUInt16LE(format, 20);
+  buf.writeUInt16LE(channels, 22);
+  buf.writeUInt32LE(sampleRate, 24);
+  buf.writeUInt32LE(sampleRate * channels * bytesPerSample, 28);
+  buf.writeUInt16LE(channels * bytesPerSample, 32);
+  buf.writeUInt16LE(bitDepth, 34);
+  buf.write('data', 36);
+  buf.writeUInt32LE(dataBytes, 40);
+  for (let i = 0; i < frames * channels; i++) {
+    const value = Math.sin((i / sampleRate) * 2 * Math.PI * 440);
+    const at = 44 + i * bytesPerSample;
+    if (format === 3) buf.writeFloatLE(value, at);
+    else if (bitDepth === 8) buf.writeUInt8(Math.round(value * 127) + 128, at);
+    else if (bitDepth === 16) buf.writeInt16LE(Math.round(value * 32767), at);
+    else if (bitDepth === 24) {
+      const v = Math.round(value * 8388607);
+      buf.writeUInt8(v & 0xff, at);
+      buf.writeUInt8((v >> 8) & 0xff, at + 1);
+      buf.writeInt8(v >> 16, at + 2);
+    } else if (bitDepth === 32) buf.writeInt32LE(Math.round(value * 2147483647), at);
+  }
+  return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+}
+
+assert.equal(isWav(buildWav({ sampleRate: 44100, channels: 1, bitDepth: 16, frames: 10 })), true);
+assert.equal(isWav(generateChime()), false, 'raw PCM must not look like a WAV');
+
+// Stereo 48kHz 16-bit: the single most likely thing someone drops in.
+{
+  const wav = buildWav({ sampleRate: 48000, channels: 2, bitDepth: 16, frames: 48000 });
+  const { pcm, info } = decodeWav(wav);
+  assert.equal(info!.channels, 2);
+  assert.equal(info!.sampleRate, 48000);
+  assert.equal(pcm.byteLength % 2, 0, 'output must be whole 16-bit samples');
+  // 1 second in, so ~44100 mono samples out, allowing for interpolation edges.
+  const samples = pcm.byteLength / 2;
+  assert.ok(Math.abs(samples - 44100) <= 2, `expected ~44100 samples, got ${samples}`);
+}
+
+// 24-bit, 8-bit and 32-bit float all have to survive.
+for (const spec of [
+  { sampleRate: 44100, channels: 1, bitDepth: 24, frames: 4410 },
+  { sampleRate: 22050, channels: 1, bitDepth: 8, frames: 2205 },
+  { sampleRate: 44100, channels: 2, bitDepth: 32, format: 3, frames: 4410 },
+]) {
+  const { pcm } = decodeWav(buildWav(spec));
+  const samples = pcm.byteLength / 2;
+  assert.ok(Math.abs(samples - 4410) <= 2, `${spec.bitDepth}-bit: expected ~4410 samples, got ${samples}`);
+  assert.ok(pcm.some((b) => b !== 0), `${spec.bitDepth}-bit: output must not be silence`);
+}
+
+// A compressed WAV must fail loudly rather than uploading noise.
+assert.throws(
+  () => decodeWav(buildWav({ sampleRate: 44100, channels: 1, bitDepth: 16, format: 17, frames: 10 })),
+  /unsupported WAV encoding/,
+);
+
+// Raw PCM passes straight through, so existing setups keep working.
+{
+  const raw = generateChime();
+  const { pcm, info } = toDevicePcm(raw);
+  assert.equal(info, null);
+  assert.deepEqual(pcm, raw, 'headerless PCM must be passed through untouched');
+}
+
+// Format detection works off magic bytes, not the filename -- which matters
+// here, because the device's own format is a ".wav" that is not a WAV.
+const magic = (bytes: number[]) => new Uint8Array([...bytes, ...new Array(16).fill(0)]);
+assert.equal(detectFormat(buildWav({ sampleRate: 44100, channels: 1, bitDepth: 16, frames: 4 })), 'wav');
+assert.equal(detectFormat(magic([0x66, 0x4c, 0x61, 0x43])), 'flac'); // "fLaC"
+assert.equal(detectFormat(magic([0x4f, 0x67, 0x67, 0x53])), 'ogg'); // "OggS"
+assert.equal(detectFormat(magic([0x49, 0x44, 0x33, 0x04])), 'mp3'); // "ID3"
+assert.equal(detectFormat(magic([0xff, 0xfb, 0x90, 0x00])), 'mp3'); // MPEG frame sync
+assert.equal(
+  detectFormat(magic([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70])),
+  'mp4',
+); // "....ftyp"
+assert.equal(
+  detectFormat(magic([0x46, 0x4f, 0x52, 0x4d, 0, 0, 0, 0, 0x41, 0x49, 0x46, 0x46])),
+  'aiff',
+); // "FORM....AIFF"
+assert.equal(detectFormat(generateChime()), 'raw', 'headerless PCM must read as raw');
+
+// The command we tell users to run must actually be the right one.
+const cmd = ffmpegCommand('song.mp3');
+assert.match(cmd, /-f s16le/);
+assert.match(cmd, /-ac 1/);
+assert.match(cmd, /-ar 44100/);
+console.log('audio: ok');
 
 console.log('\nall checks passed');

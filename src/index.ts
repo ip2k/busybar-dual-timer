@@ -1,7 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { BusyBarClient, InputStream } from './api.ts';
+import { loadAudioForDevice } from './audio-file.ts';
 import { monotonicMs } from './clock.ts';
 import { generateChime } from './chime.ts';
 import { loadConfig, PROJECT_ROOT, type Config } from './config.ts';
@@ -92,8 +93,27 @@ class DualTimerApp {
     }
 
     const localPath = resolve(PROJECT_ROOT, 'assets', sound.file);
-    const data = existsSync(localPath) ? new Uint8Array(readFileSync(localPath)) : generateChime();
-    if (!existsSync(localPath)) log(`[sound] ${localPath} not found, using the built-in synthesised chime`);
+    let data: Uint8Array;
+    if (existsSync(localPath)) {
+      try {
+        // Drop in any ordinary sound file; the device only plays headerless PCM,
+        // so convert rather than making people work that out themselves.
+        const converted = loadAudioForDevice(localPath);
+        data = converted.pcm;
+        log(`[sound] ${sound.file}: ${converted.note}`);
+        if (converted.info) {
+          const { sampleRate, channels, bitDepth, duration } = converted.info;
+          log(`[sound] source was ${sampleRate}Hz ${channels}ch ${bitDepth}-bit, ${duration.toFixed(2)}s`);
+        }
+      } catch (error) {
+        log(`[sound] could not read ${sound.file}: ${(error as Error).message}`);
+        log('[sound] falling back to the built-in synthesised chime');
+        data = generateChime();
+      }
+    } else {
+      data = generateChime();
+      log(`[sound] ${localPath} not found, using the built-in synthesised chime`);
+    }
 
     try {
       await this.client.uploadAsset(this.config.app.name, sound.file, data);

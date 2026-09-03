@@ -22,17 +22,19 @@ tested offline but **not yet re-verified by hand on the device**. See
 
 | | |
 | --- | --- |
-| Device | BUSY Bar, `192.168.1.163` on the LAN (`10.0.4.20` over USB) |
+| Device | BUSY Bar — `10.0.4.20` over USB, or its DHCP address on Wi-Fi |
 | Firmware API | `25.0.0` |
-| Local HTTP API | enabled, **no auth token** currently |
-| OpenAPI spec | `http://192.168.1.163/openapi.yaml` (**not** `/openapi.json` — 404s) |
-| Rendered docs | `http://192.168.1.163/docs/` |
+| Local HTTP API | must be enabled on the device; Wi-Fi needs a token, USB does not |
+| OpenAPI spec | `http://<bar>/openapi.yaml` (**not** `/openapi.json` — 404s) |
+| Rendered docs | `http://<bar>/docs/` |
 | Front display | 72×16 RGB LED matrix |
 | Back display | 160×80 greyscale, 16 levels |
 
-There is also an Ubuntu box on the same network at `192.168.1.25` (user
-`likwid`, has sudo) — the intended host if this is ever run as a service. The
-bundled `busy-dual-timer.service` is already pointed at it.
+The bundled `busy-dual-timer.service` is a template for running this as a
+systemd service on any always-on Linux box on the same network.
+
+The working device address lives in `config.json`, which is **gitignored** —
+this is a public repo, so keep real addresses and tokens out of tracked files.
 
 **The Bar is live on the network.** You can hit it directly with `curl` from a
 machine on the LAN, and you should — the device is the source of truth, and the

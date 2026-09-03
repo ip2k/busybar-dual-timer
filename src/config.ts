@@ -71,7 +71,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(HERE, '..');
 
 const DEFAULTS: Config = {
-  device: { host: '192.168.1.163', apiToken: null },
+  // Overridden by config.json. 10.0.4.20 is the Bar's fixed USB address, which
+  // works with no token and no network setup — the best default for a first run.
+  device: { host: '10.0.4.20', apiToken: null },
   app: { name: 'dual_timer', priority: 95 },
   timers: [
     { label: 'A', seconds: 1500, color: '#3BA7FFFF' },

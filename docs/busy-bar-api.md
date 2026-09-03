@@ -1,7 +1,7 @@
 # BUSY Bar HTTP API — working notes
 
 Everything below marked **verified** was checked against a real device
-(`192.168.1.163`, firmware API `25.0.0`). Everything else is from published docs
+(`<bar-ip>`, firmware API `25.0.0`). Everything else is from published docs
 or library source and should be treated as unconfirmed.
 
 Spec: `http://<bar>/openapi.yaml` — **not** `/openapi.json`, which 404s.

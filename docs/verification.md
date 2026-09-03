@@ -3,7 +3,7 @@
 What has actually been proven, and how. Keep this honest — it is the difference
 between "the docs say" and "the device does".
 
-Device under test: BUSY Bar at `192.168.1.163`, firmware API `25.0.0`, local
+Device under test: BUSY Bar at `<bar-ip>`, firmware API `25.0.0`, local
 HTTP API enabled with no auth token.
 
 ## Verified on hardware
@@ -11,7 +11,7 @@ HTTP API enabled with no auth token.
 ### A full run, end to end (2026-09-02)
 
 The assembled program was started against the Bar and driven through a complete
-cycle. Run over **USB (`10.0.4.20`)** — see the note below about `192.168.1.163`.
+cycle. Run over **USB (`10.0.4.20`)** — see the note below about `<bar-ip>`.
 Config was a scratch copy with `timers[0].seconds: 12`, `flashSeconds: 6`,
 `sound.repeat: 2` so expiry came round quickly; `config.json` was not touched.
 
@@ -66,7 +66,7 @@ This means layout changes can now be checked from a script instead of by eye.
 ### The gesture set, driven by a human thumb over Wi-Fi (2026-09-02)
 
 The three gestures were exercised on real hardware, by hand, with the Bar on
-Wi-Fi at `192.168.1.163` and the program running the **shipped `config.json`**
+Wi-Fi at `<bar-ip>` and the program running the **shipped `config.json`**
 (A=25:00, B=5:00) — not a scratch copy. Latency 13–35 ms.
 
 | Gesture | Log line | Notes |
@@ -246,10 +246,10 @@ This confirms the element schema, the font names, the rectangle element, the
 
 Both paths are now proven:
 
-- **Wi-Fi `192.168.1.163`** — works; this is what `config.json` ships with.
+- **Wi-Fi `<bar-ip>`** — works; this is what `config.json` ships with.
 - **USB `10.0.4.20`** — works; useful when the Bar is tethered to the machine.
 
-Earlier in testing `192.168.1.163` pinged but refused TCP 80 while the Bar was
+Earlier in testing `<bar-ip>` pinged but refused TCP 80 while the Bar was
 on USB. That was the address not being served at the time, not a defect; once
 the Bar was moved to Wi-Fi it answered there normally.
 
