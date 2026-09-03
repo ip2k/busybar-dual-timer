@@ -132,7 +132,9 @@ jobs:
         if: ${{ env.NPM_TOKEN != '' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish
+        # --provenance here rather than in publishConfig: it needs a supported CI
+        # provider, so putting it in package.json makes local publishes fail.
+        run: npm publish --provenance
 
       - name: Note if npm was skipped
         if: ${{ env.NPM_TOKEN == '' }}
