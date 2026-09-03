@@ -252,7 +252,14 @@ class DualTimerApp {
       // The sound belongs to whichever timer expired, so A and B are
       // distinguishable from the next room without looking.
       const source = this.soundSources[this.timer.snapshot().index] ?? null;
+      // Nothing may touch the device while the lever is elsewhere. The display
+      // and LED are gated in render(), but sound is a separate side effect and
+      // has to be gated too — an alarm going off over somebody's clock app is
+      // exactly the intrusion `activeSwitchPosition` exists to prevent. The
+      // expiry state machine below still advances, so the timer is correct when
+      // you come back; it just does so silently.
       if (
+        this.onScreen &&
         source &&
         this.soundsPlayed < sound.repeat &&
         monotonicMs() - this.lastSoundAt >= sound.repeatEveryMs
@@ -278,7 +285,7 @@ class DualTimerApp {
 
   private onExpired(): void {
     const snapshot = this.timer.snapshot();
-    log(`[expiry] timer ${snapshot.label} finished`);
+    log(`[expiry] timer ${snapshot.label} finished${this.onScreen ? '' : ' (silently — lever is elsewhere)'}`);
     this.expiryStartedAt = monotonicMs();
     this.soundsPlayed = 0;
     this.lastSoundAt = 0;

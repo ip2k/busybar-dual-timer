@@ -163,6 +163,35 @@ redraw interval. Documented as a limitation rather than half-built.
 **Chimes.** A's and B's expiry sounds were confirmed audibly different — A rises,
 B falls a fourth lower.
 
+### Expiry is silent when the lever is elsewhere (2026-09-03)
+
+A real bug, spotted from use and confirmed by reading the code: the display and
+LED were gated on `activeSwitchPosition`, but **sound was not**. `playAudio` is
+called from `tick()`, which runs regardless, so a timer expiring while the lever
+was away would have played the chime over whatever the device was doing.
+
+That is precisely the intrusion `activeSwitchPosition` exists to prevent —
+hiding a widget is pointless if it still makes noise.
+
+Fixed by gating the sound too. The expiry state machine still advances, so the
+timer is correct when you come back; it just does so silently. Verified on
+hardware:
+
+```
+02:38:26  [input] switch -> off (widget off)
+02:38:26  [display] handed the screen back to the device
+02:38:27  [input] switch -> apps
+02:38:30  [expiry] timer A finished (silently — lever is elsewhere)
+```
+
+An earlier attempt at this test was inconclusive because the lever stayed on
+CUSTOM and the timer expired while active — the alarm sounded, correctly. Worth
+recording that the first run proved nothing, rather than counting it.
+
+**Lesson:** gating a feature means gating every side effect it has, not just the
+obvious one. Display, LED and input were all handled; sound was missed because
+it lives on a different code path.
+
 ### The lever as an app switch, and the device left alone (2026-09-03)
 
 With `behavior.activeSwitchPosition: "custom"`, verified by hand:

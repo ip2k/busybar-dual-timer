@@ -191,7 +191,9 @@ exactly as it does without the timer running. Running this should not change how
 your Bar works when you're not using it.
 
 Timers keep counting while hidden — you don't lose time by glancing at another
-app.
+app — but they expire **silently**. No chime, no LED, no display. You'll see
+`DONE` when you come back. Hiding a widget that still makes noise would defeat
+the point.
 
 **One caveat.** The lever position is only reported when it *changes*; no
 endpoint exposes the current position (checked `/api/status` and
