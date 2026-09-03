@@ -46,98 +46,83 @@ console.log('proto: ok');
   assert.ok(Number.isSafeInteger(state.timestampMs));
 }
 
-// 4. Gestures: the mapping is START=toggle, BACK=reset, dial click=switch,
-//    dial turn=coarse adjust, click+turn=fine adjust (and no switch on release).
+// 4. Gestures: START=toggle, dial click=switch, dial double-click=reset,
+//    dial turn=1 minute, click+turn=fine. No ramping: one detent, one step.
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const seen: Gesture[] = [];
+const DOUBLE_TAP_MS = 120;
 const recognizer = new GestureRecognizer(
   {
     toggleButton: 'start',
-    resetButton: 'back',
     switchButton: 'ok',
+    resetButton: null,
+    doubleTapMs: DOUBLE_TAP_MS,
     coarseStepSeconds: 60,
     fineStepSeconds: 5,
-    ramp: { fastGapMs: 90, fastMultiplier: 5, mediumGapMs: 250, mediumMultiplier: 2 },
   },
   (gesture) => seen.push(gesture),
 );
+const settle = () => sleep(DOUBLE_TAP_MS + 60);
 
-// Buttons act on the press, with no window to wait out.
+// START acts on the press, with no window to wait out.
 recognizer.handle('start', 'press');
 assert.deepEqual(seen, [{ kind: 'toggle' }], 'START must toggle immediately on press');
 recognizer.handle('start', 'release');
 assert.deepEqual(seen, [{ kind: 'toggle' }], 'the release must not act again');
 
+// BACK is unbound by default: the firmware owns it.
 seen.length = 0;
 recognizer.handle('back', 'press');
 recognizer.handle('back', 'release');
-assert.deepEqual(seen, [{ kind: 'reset' }]);
+await settle();
+assert.deepEqual(seen, [], 'BACK must do nothing unless explicitly bound');
 
-// A clean dial click switches timers.
+// One dial click switches, after the double-click window closes.
 seen.length = 0;
-recognizer.handle('ok', 'press');
-recognizer.handle('ok', 'release');
+recognizer.handle('ok', 'press', 1_000);
+recognizer.handle('ok', 'release', 1_060);
+assert.deepEqual(seen, [], 'a single click must wait to see if a second follows');
+await settle();
 assert.deepEqual(seen, [{ kind: 'switch' }]);
 
-// A plain turn is a coarse step; slow enough not to trip the ramp.
+// Two quick clicks are a reset, and must NOT also switch.
 seen.length = 0;
-await sleep(300);
+recognizer.handle('ok', 'press', 2_000);
+recognizer.handle('ok', 'release', 2_060);
+recognizer.handle('ok', 'press', 2_100);
+recognizer.handle('ok', 'release', 2_160);
+await settle();
+assert.deepEqual(seen, [{ kind: 'reset' }], 'a double click must reset exactly once, with no switch');
+
+// Network robustness: two clicks the DEVICE says were 4 s apart must be a
+// switch even if a stall delivered them back-to-back. Otherwise a laggy link
+// silently resets the user's timer.
+seen.length = 0;
+recognizer.handle('ok', 'press', 10_000);
+recognizer.handle('ok', 'release', 10_060);
+recognizer.handle('ok', 'press', 14_000);
+recognizer.handle('ok', 'release', 14_060);
+await settle();
+assert.deepEqual(seen, [{ kind: 'switch' }], 'a stall must not be mistaken for a double click');
+
+// A plain turn is one coarse step per detent, with no ramping however fast.
+seen.length = 0;
 recognizer.handleEncoder(1);
-await sleep(300);
+recognizer.handleEncoder(1);
 recognizer.handleEncoder(-1);
 assert.deepEqual(seen, [
   { kind: 'adjust', deltaMs: 60_000 },
+  { kind: 'adjust', deltaMs: 60_000 },
   { kind: 'adjust', deltaMs: -60_000 },
-]);
+], 'every detent is one step regardless of speed');
 
-// Turning while the dial is held gives fine steps AND swallows the switch.
+// Turning while held gives fine steps AND swallows the click.
 seen.length = 0;
-recognizer.handle('ok', 'press');
-await sleep(300);
+recognizer.handle('ok', 'press', 20_000);
 recognizer.handleEncoder(1);
-recognizer.handle('ok', 'release');
-assert.deepEqual(seen, [{ kind: 'adjust', deltaMs: 5_000 }], 'a turn while held must not also switch timers');
-
-// Spinning fast multiplies the step.
-seen.length = 0;
-await sleep(300);
-recognizer.handleEncoder(1); // slow: x1
-recognizer.handleEncoder(1); // immediately after: fast, x5
-assert.deepEqual(seen, [
-  { kind: 'adjust', deltaMs: 60_000 },
-  { kind: 'adjust', deltaMs: 300_000 },
-]);
-// Network robustness: ramping must key off the DEVICE clock, not arrival time.
-// Two detents the user turned 800 ms apart, delivered back-to-back by a laggy
-// link, must still be a x1 step each -- not a ramped jump.
-seen.length = 0;
-recognizer.handleEncoder(1, 1_000_000_000_000);
-recognizer.handleEncoder(1, 1_000_000_000_800); // 800 ms apart on the device
-assert.deepEqual(
-  seen,
-  [
-    { kind: 'adjust', deltaMs: 60_000 },
-    { kind: 'adjust', deltaMs: 60_000 },
-  ],
-  'a network stall must not be mistaken for a fast spin',
-);
-
-// The same two arrivals WITHOUT device timestamps do ramp -- which is exactly
-// the failure mode the device clock exists to prevent.
-seen.length = 0;
-await sleep(300);
-recognizer.handleEncoder(1);
-recognizer.handleEncoder(1);
-assert.equal(seen[1] !== undefined && (seen[1] as { deltaMs: number }).deltaMs, 300_000);
-
-// A device clock that steps backwards must not ramp either.
-seen.length = 0;
-recognizer.handleEncoder(1, 1_000_000_000_000);
-recognizer.handleEncoder(1, 999_999_999_000);
-assert.deepEqual(seen, [
-  { kind: 'adjust', deltaMs: 60_000 },
-  { kind: 'adjust', deltaMs: 60_000 },
-]);
+recognizer.handle('ok', 'release', 20_400);
+await settle();
+assert.deepEqual(seen, [{ kind: 'adjust', deltaMs: 5_000 }], 'click+turn must not also switch or reset');
 recognizer.dispose();
 console.log('gestures: ok');
 

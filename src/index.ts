@@ -66,7 +66,7 @@ class DualTimerApp {
     const g = this.config.gestures;
     log(
       `[ready] ${a.label}=${formatDuration(a.seconds * 1000)} ${b.label}=${formatDuration(b.seconds * 1000)} — ` +
-        `${g.toggleButton} start/pause · ${g.resetButton} reset · dial click switches · ` +
+        `${g.toggleButton} start/pause · dial click switches · dial double-click resets · ` +
         `dial turn ±${g.coarseStepSeconds}s · hold+turn ±${g.fineStepSeconds}s`,
     );
   }
@@ -106,11 +106,11 @@ class DualTimerApp {
 
   private onInput(event: InputEvent, atMs: number): void {
     if (event.kind === 'button') {
-      this.gestures.handle(event.button, event.action);
+      this.gestures.handle(event.button, event.action, atMs);
       return;
     }
     if (event.kind === 'encoder') {
-      this.gestures.handleEncoder(event.delta, atMs);
+      this.gestures.handleEncoder(event.delta);
       return;
     }
     if (event.kind === 'switch') {
@@ -140,7 +140,7 @@ class DualTimerApp {
       }
       case 'reset':
         this.timer.reset();
-        log('[gesture] back -> reset');
+        log('[gesture] dial double-click -> reset');
         break;
       case 'adjust': {
         const now = this.timer.adjust(gesture.deltaMs, this.config.gestures.maxSeconds * 1000);

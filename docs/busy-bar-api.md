@@ -298,6 +298,22 @@ release:
 So press-and-spin is a usable modifier gesture — coarse vs fine adjustment, or
 "hold to change the other timer" — without any conflict between the two streams.
 
+### BACK navigates the device, and you cannot stop it
+
+Pressing BACK pops the firmware's own navigation stack. If your app has drawn
+over the screen, the widget is thrown off and the device UI appears. Verified on
+hardware: a frame grab immediately after BACK showed the device's clock/calendar
+screen where the widget had been.
+
+Nothing in the API tells you this happened, and the input event still arrives
+normally, so an app can believe it is fine while showing nothing. The effect is
+contextual — at the root of the stack BACK does nothing — so it presents as an
+intermittent fault.
+
+Redrawing reclaims the panel immediately at a high enough priority. Any app that
+draws a persistent widget should redraw periodically rather than only on change,
+or it will silently vanish. START and the dial were not observed to do this.
+
 ### Measured input timings
 
 Real human timings, captured rather than assumed. Useful for setting gesture

@@ -5,8 +5,8 @@ Guidance for Claude Code working in this repo.
 ## What this is
 
 `busy-dual-timer` — two configurable countdowns on a BUSY Bar. START =
-start/pause, BACK = reset, dial click = switch A/B, dial turn = adjust minutes,
-dial held + turn = adjust seconds. Everything runs off-device against the Bar's
+start/pause, dial click = switch A/B, dial double-click = reset, dial turn =
+adjust minutes, dial held + turn = adjust seconds. BACK is deliberately unbound. Everything runs off-device against the Bar's
 local HTTP API; nothing is installed on the Bar itself.
 
 Status: **working, and driven through a full cycle against real hardware**
@@ -61,7 +61,8 @@ real captured device frames. Run it after touching anything in `src/`.
 src/config.ts     load config.json, deep-merge over defaults, validate
 src/proto.ts      minimal protobuf reader for the status WebSocket
 src/api.ts        HTTP client + reconnecting WebSocket
-src/gestures.ts   buttons + dial -> toggle / reset / switch / adjust
+src/gestures.ts   buttons + dial -> toggle / switch / reset / adjust
+src/clock.ts      monotonic clock for measuring durations
 src/timers.ts     the two-countdown state machine (pure, no I/O)
 src/render.ts     72x16 layout -> draw payload (pure, no I/O)
 src/chime.ts      PCM chime synthesis

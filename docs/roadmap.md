@@ -2,25 +2,28 @@
 
 ## Immediate next step
 
-**Let it soak.** Every gesture and every stage of the cycle has now run against
-the device, by hand, over both USB and Wi-Fi (see `docs/verification.md`). What
-is left is time: clock drift over hours, reconnect after a real network drop,
-and what happens when the Bar sleeps. Leave it running for a working session and
-see whether the stream stays up.
+**Try the current control scheme by hand.** It changed twice in quick succession
+after hardware use, and the latest version has not been used in anger:
 
-Two smaller things still uncharacterised, both needing a person at the device:
+| Control | Action |
+| --- | --- |
+| START | start / pause |
+| dial click | switch A ↔ B |
+| dial double-click | reset |
+| dial turn | ±1 minute |
+| dial click + turn | ±5 seconds |
 
-- Whether any switch position changes what START does natively. No interference
-  showed up in the by-hand run, but the position was not recorded — so this is
-  narrowing, not closed.
-- Dismissing an expiry with a physical tap (expiry has only ever timed out on
-  its own).
-
-**Tuning is now the interesting work**, not correctness — see item 1 below.
+Worth paying attention to whether the 300 ms `doubleTapMs` makes a single click
+feel sluggish — that window is the price of keeping reset off BACK.
 
 ## Then, roughly in order of value
 
-1. **Tune `multiTapWindowMs`.** `longPressMs: 700` is **settled** — confirmed by
+1. **~~Tune `multiTapWindowMs`.~~ Gone.** The control remap deleted the
+   multi-tap window along with `tapMode` and `longPressMs`; nothing is
+   overloaded any more, so there is nothing to wait out. The remaining timing
+   knob is `gestures.doubleTapMs`.
+
+   Old notes, kept because the measurements are still useful: `longPressMs: 700` is **settled** — confirmed by
    feel on hardware, it reads as deliberate without dragging. Leave it.
 
    `multiTapWindowMs: 400` is the one still worth moving. In `deferred` mode it
@@ -58,6 +61,15 @@ Two smaller things still uncharacterised, both needing a person at the device:
 - **Use `countdown` elements.** Would remove the per-second redraw entirely, at
   the cost of font control. Worth a look if network chattiness ever matters, or
   if the default countdown rendering turns out to look good.
+- **Dial speed ramping — tried, then removed.** The step used to multiply when
+  the dial spun fast. On hardware it felt unpredictable and not especially
+  responsive, and for the timers people actually set, one detent per minute is
+  enough. Removed rather than left as dead config. If it comes back, the
+  measurements in `docs/busy-bar-api.md` are the starting point — and note the
+  first attempt failed because the thresholds were calibrated against a spin
+  done *for a capture* (~600 ms/detent) rather than a spin done to set a timer
+  (56–83 ms/detent).
+
 - **Use the encoder wheel and mode switch.** No longer speculative: both are
   now confirmed on the wire, and `proto.ts` decodes them correctly as-is (see
   `docs/busy-bar-api.md`). Dialing timer lengths on-device is a small change —

@@ -17,20 +17,21 @@ export interface Config {
   timers: [TimerConfig, TimerConfig];
   gestures: {
     toggleButton: ButtonName;
-    resetButton: ButtonName;
     /** Pressing the dial in; on this hardware that is the `ok` button. */
     switchButton: ButtonName;
+    /**
+     * Extra button bound to reset. **Defaults to null (unbound)** — the only
+     * spare button is BACK, and the firmware uses it to pop its own navigation
+     * stack, which throws the widget off the panel. Reset is a double-click of
+     * the dial instead. Set this only if you have a reason to.
+     */
+    resetButton: ButtonName | null;
+    /** Two dial clicks within this window mean reset rather than two switches. */
+    doubleTapMs: number;
     /** Step for a plain dial turn. */
     coarseStepSeconds: number;
     /** Step for a turn with the dial held down. */
     fineStepSeconds: number;
-    /** Spinning faster multiplies the step. */
-    ramp: {
-      fastGapMs: number;
-      fastMultiplier: number;
-      mediumGapMs: number;
-      mediumMultiplier: number;
-    };
     /** Upper bound the dial can wind a timer to. */
     maxSeconds: number;
   };
@@ -78,15 +79,13 @@ const DEFAULTS: Config = {
   ],
   gestures: {
     toggleButton: 'start',
-    resetButton: 'back',
     switchButton: 'ok',
+    resetButton: null,
+    // Measured on hardware: rapid clicks run 147-182 ms apart, so 300 ms is a
+    // comfortable window without making a single click feel sluggish.
+    doubleTapMs: 300,
     coarseStepSeconds: 60,
     fineStepSeconds: 5,
-    // Measured on hardware. A deliberate spin sits around 56-83 ms between
-    // detents, so those thresholds must be BELOW that or ordinary spinning
-    // ramps to the top multiplier immediately. x5 is reserved for a genuine
-    // flick (<25 ms); normal spinning lands on x2.
-    ramp: { fastGapMs: 25, fastMultiplier: 5, mediumGapMs: 100, mediumMultiplier: 2 },
     maxSeconds: 24 * 60 * 60,
   },
   behavior: {
@@ -140,26 +139,26 @@ function validate(cfg: Config): void {
     'app.priority must be 1-100 (system apps sit at 10, an active BUSY session at 90)',
   );
   const buttons = ['ok', 'back', 'start'];
-  const bound = [
+  const bound: [string, ButtonName | null][] = [
     ['toggleButton', cfg.gestures.toggleButton],
-    ['resetButton', cfg.gestures.resetButton],
     ['switchButton', cfg.gestures.switchButton],
-  ] as const;
+    ['resetButton', cfg.gestures.resetButton],
+  ];
   for (const [key, value] of bound) {
-    assert(buttons.includes(value), `gestures.${key} must be 'ok', 'back' or 'start'`);
+    if (key === 'resetButton' && value === null) continue;
+    assert(value !== null && buttons.includes(value), `gestures.${key} must be 'ok', 'back' or 'start'`);
   }
+  const assigned = bound.map(([, value]) => value).filter((value) => value !== null);
   assert(
-    new Set(bound.map(([, value]) => value)).size === bound.length,
-    'gestures.toggleButton, resetButton and switchButton must all be different buttons',
+    new Set(assigned).size === assigned.length,
+    'gestures.toggleButton, switchButton and resetButton must all be different buttons',
   );
+  assert(cfg.gestures.doubleTapMs > 50, 'gestures.doubleTapMs must be > 50');
   assert(cfg.gestures.coarseStepSeconds > 0, 'gestures.coarseStepSeconds must be > 0');
   assert(cfg.gestures.fineStepSeconds > 0, 'gestures.fineStepSeconds must be > 0');
   assert(cfg.gestures.maxSeconds > 0, 'gestures.maxSeconds must be > 0');
   assert(cfg.behavior.reassertEveryMs >= 0, 'behavior.reassertEveryMs must be >= 0 (0 disables it)');
   assert(cfg.behavior.maxEventsPerMessage >= 0, 'behavior.maxEventsPerMessage must be >= 0 (0 disables the guard)');
-  const { ramp } = cfg.gestures;
-  assert(ramp.fastGapMs > 0 && ramp.mediumGapMs > ramp.fastGapMs, 'gestures.ramp.mediumGapMs must be > fastGapMs > 0');
-  assert(ramp.fastMultiplier >= 1 && ramp.mediumMultiplier >= 1, 'gestures.ramp multipliers must be >= 1');
   assert(HEX_RGBA.test(cfg.expiry.ledColor), 'expiry.ledColor must be #RRGGBBAA');
   assert(['asset', 'stock', 'none'].includes(cfg.expiry.sound.mode), "expiry.sound.mode must be 'asset', 'stock' or 'none'");
   if (cfg.expiry.sound.mode === 'stock') {

@@ -6,50 +6,54 @@ export type Gesture =
   | { kind: 'switch' }
   | { kind: 'adjust'; deltaMs: number };
 
-export interface RampOptions {
-  fastGapMs: number;
-  fastMultiplier: number;
-  mediumGapMs: number;
-  mediumMultiplier: number;
-}
-
 export interface GestureOptions {
   toggleButton: ButtonName;
-  resetButton: ButtonName;
   /** Pressing the dial in. On this hardware that arrives as the `ok` button. */
   switchButton: ButtonName;
+  /**
+   * Optional extra button bound to reset. Defaults to unbound, because the only
+   * spare button is BACK and the firmware uses it to pop its own navigation
+   * stack — binding it throws the widget off the panel. Reset lives on a
+   * double-click of the dial instead.
+   */
+  resetButton: ButtonName | null;
+  /** Two dial clicks inside this window are a reset rather than two switches. */
+  doubleTapMs: number;
   coarseStepSeconds: number;
   fineStepSeconds: number;
-  ramp: RampOptions;
 }
 
 /**
  * Maps the Bar's physical controls onto timer actions.
  *
- *   START            start / pause
- *   BACK             reset
- *   dial click       switch A <-> B
- *   dial spin        adjust by `coarseStepSeconds`
- *   click + spin     adjust by `fineStepSeconds`
+ *   START               start / pause
+ *   dial click          switch A <-> B
+ *   dial double-click   reset
+ *   dial turn           adjust by `coarseStepSeconds`
+ *   click + turn        adjust by `fineStepSeconds`
  *
- * Every action fires on the press itself. Because no control is overloaded with
- * a multi-tap, there is nothing to disambiguate and therefore no window to wait
- * out — start/pause is instant. The previous mapping put start, switch and reset
- * all on START, which cost `multiTapWindowMs` of latency on every tap.
+ * START acts on the press, with nothing to wait for — start/pause is instant,
+ * which is the one place latency is really felt.
  *
- * The one ambiguity left is the dial: a click means "switch", but a click is
- * also how you hold it to get fine steps. So the switch is emitted on *release*
- * and suppressed if the dial turned while it was down — the same
- * swallow-the-release trick the old long-press used.
+ * The dial carries the rest. A click has to wait out `doubleTapMs` to know
+ * whether a second one is coming, so switching costs that much latency; that is
+ * an acceptable trade on an action you use far less than start/pause, and it
+ * keeps reset off the firmware-owned BACK button.
  *
- * Spinning fast multiplies the step (see `RampOptions`); a detent can arrive as
- * little as 15 ms after the last one, so without ramping a long adjustment is a
- * lot of wrist.
+ * Turning while the dial is held gives fine steps, and suppresses the switch on
+ * release so click-and-spin doesn't also flip timers.
+ *
+ * Every interval is measured with the *device's* clock, never arrival time. On a
+ * laggy link a stall delivers buffered events together, and two clicks that
+ * arrive back-to-back would otherwise look like a double-click and fire a
+ * spurious reset.
  */
 export class GestureRecognizer {
   private switchDown = false;
   private spunWhileDown = false;
-  private lastDetentAt = 0;
+  /** Device timestamps of the clicks in the window currently being judged. */
+  private clickTimes: number[] = [];
+  private clickTimer: NodeJS.Timeout | null = null;
 
   private readonly options: GestureOptions;
   private readonly emit: (gesture: Gesture) => void;
@@ -59,12 +63,13 @@ export class GestureRecognizer {
     this.emit = emit;
   }
 
-  handle(button: ButtonName, action: ButtonAction): void {
+  /** `atMs` is the device's own clock for this event, or 0 if unavailable. */
+  handle(button: ButtonName, action: ButtonAction, atMs = 0): void {
     const { toggleButton, resetButton, switchButton } = this.options;
 
     if (action === 'press') {
       if (button === toggleButton) this.emit({ kind: 'toggle' });
-      else if (button === resetButton) this.emit({ kind: 'reset' });
+      else if (resetButton !== null && button === resetButton) this.emit({ kind: 'reset' });
       else if (button === switchButton) {
         this.switchDown = true;
         this.spunWhileDown = false;
@@ -72,48 +77,56 @@ export class GestureRecognizer {
       return;
     }
 
-    if (button === switchButton && this.switchDown) {
-      this.switchDown = false;
-      // A turn while held meant "fine adjust", not "switch".
-      if (!this.spunWhileDown) this.emit({ kind: 'switch' });
+    if (button !== switchButton || !this.switchDown) return;
+    this.switchDown = false;
+
+    // A turn while held meant "fine adjust", not a click at all.
+    if (this.spunWhileDown) {
       this.spunWhileDown = false;
+      return;
     }
+
+    this.clickTimes.push(atMs > 0 ? atMs : Date.now());
+    if (this.clickTimer) clearTimeout(this.clickTimer);
+    this.clickTimer = setTimeout(() => this.resolveClicks(), this.options.doubleTapMs);
   }
 
   /**
-   * One detent of the dial. `delta` is +/-1.
+   * Decide what a run of dial clicks meant, once the window has closed.
    *
-   * `atMs` should be the device's own clock for the message that carried this
-   * event. Ramping keys off the interval between detents, and on a laggy or
-   * spotty network local arrival time is a property of the *network*, not of
-   * how fast the dial was turned: a stall that releases three buffered detents
-   * at once would look like a very fast spin and ramp to the largest multiplier,
-   * jumping the timer by a wild amount. The device clock is immune to that.
-   *
-   * Falls back to local time when the device sends no timestamp, and refuses to
-   * ramp on a gap that went backwards (clock step, or events out of order).
+   * Two or more clicks count as a reset only if the *device* says they really
+   * were that close together. Clicks that merely arrived together after a
+   * network stall fall through to a switch.
    */
-  handleEncoder(delta: number, atMs = 0): void {
-    if (delta === 0) return;
-    const now = atMs > 0 ? atMs : Date.now();
-    const gap = now >= this.lastDetentAt ? now - this.lastDetentAt : Number.POSITIVE_INFINITY;
-    this.lastDetentAt = now;
+  private resolveClicks(): void {
+    this.clickTimer = null;
+    const times = this.clickTimes;
+    this.clickTimes = [];
+    if (times.length === 0) return;
 
+    const spread = times[times.length - 1]! - times[0]!;
+    if (times.length >= 2 && spread >= 0 && spread <= this.options.doubleTapMs) {
+      this.emit({ kind: 'reset' });
+      return;
+    }
+    this.emit({ kind: 'switch' });
+  }
+
+  /** One detent of the dial. `delta` is +/-1; one detent is always one step. */
+  handleEncoder(delta: number): void {
+    if (delta === 0) return;
     if (this.switchDown) this.spunWhileDown = true;
 
-    const { ramp, coarseStepSeconds, fineStepSeconds } = this.options;
-    const multiplier =
-      gap < ramp.fastGapMs
-        ? ramp.fastMultiplier
-        : gap < ramp.mediumGapMs
-          ? ramp.mediumMultiplier
-          : 1;
-
-    const stepSeconds = this.switchDown ? fineStepSeconds : coarseStepSeconds;
-    this.emit({ kind: 'adjust', deltaMs: delta * stepSeconds * multiplier * 1000 });
+    const stepSeconds = this.switchDown
+      ? this.options.fineStepSeconds
+      : this.options.coarseStepSeconds;
+    this.emit({ kind: 'adjust', deltaMs: delta * stepSeconds * 1000 });
   }
 
   dispose(): void {
+    if (this.clickTimer) clearTimeout(this.clickTimer);
+    this.clickTimer = null;
+    this.clickTimes = [];
     this.switchDown = false;
     this.spunWhileDown = false;
   }

@@ -16,11 +16,11 @@
 
   "gestures": {
     "toggleButton": "start",
-    "resetButton": "back",
     "switchButton": "ok",
+    "resetButton": null,
+    "doubleTapMs": 300,
     "coarseStepSeconds": 60,
     "fineStepSeconds": 5,
-    "ramp": { "fastGapMs": 25, "fastMultiplier": 5, "mediumGapMs": 100, "mediumMultiplier": 2 },
     "maxSeconds": 86400
   },
 

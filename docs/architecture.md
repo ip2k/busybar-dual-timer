@@ -50,39 +50,58 @@ at https://github.com/busy-app/busybar-protobuf.
 The device gives you PRESS and RELEASE on three buttons, plus a dial that
 reports rotation as `±1` per detent. Everything else is our interpretation.
 
-The mapping spreads the work across the hardware instead of overloading one
-button:
-
 | Control | Action |
 | --- | --- |
 | START | start / pause |
-| BACK | reset |
 | dial click | switch A ↔ B |
+| dial double-click | reset |
 | dial turn | adjust by `coarseStepSeconds` (default 60 s) |
 | dial click + turn | adjust by `fineStepSeconds` (default 5 s) |
 
-**Everything fires on the press.** That is the whole point of the layout. An
-earlier version put start, switch and reset all on START, which meant a tap
-could not be acted on until a multi-tap window closed — 400 ms of latency on
-every start/pause, or a display that flickered through intermediate states.
-Because nothing is overloaded now, there is nothing to disambiguate and no
-window to wait out. The `tapMode` / `multiTapWindowMs` / `longPressMs` trade-off
-that used to live here is simply gone.
+**BACK is deliberately unbound.** See below — it is not ours to use.
 
-One ambiguity remains, and it is unavoidable: a dial click means "switch", but
-holding the dial is also how you get fine steps. So the switch is emitted on
-*release*, and suppressed if the dial turned while it was down. That is the same
-swallow-the-release trick the old long press used, and it is why click-and-spin
-does not also flip timers.
+START acts on the press, with nothing to wait for, because start/pause is the
+one action where latency is actually felt. The dial carries everything else.
 
-Fast spins ramp. Detents can arrive 15 ms apart (measured), so a plain 1-step
-mapping would make winding a timer to 45 minutes a lot of wrist. The gap between
-detents picks a multiplier — see `gestures.ramp`. Set both multipliers to 1 to
-turn ramping off.
+A dial click has to wait out `doubleTapMs` (default 300 ms) to know whether a
+second click is coming, so switching costs that much latency. That is a
+deliberate trade: switching happens far less often than start/pause, and paying
+it is what keeps reset off BACK.
 
-Adjustment deliberately does **not** redraw on each detent. It changes state and
-lets the next tick draw, which rate-limits the display to `TICK_MS` no matter how
-fast the dial spins.
+Turning while the dial is held gives fine steps and suppresses the click on
+release, so click-and-spin doesn't also flip timers.
+
+**There is no speed ramping.** An earlier version multiplied the step when the
+dial spun fast. It was tried on hardware and removed: it felt unpredictable, and
+for the timers people actually set, one detent per minute is plenty. The
+measurements are kept in `docs/busy-bar-api.md` in case anyone wants to
+reconsider.
+
+### BACK belongs to the firmware, not to us
+
+The firmware acts on every button press regardless of what we draw, and this
+cannot be suppressed. For START and the dial that is harmless. For BACK it is
+not: **BACK pops the device's own navigation stack**, which throws the widget
+off the panel and leaves the device UI showing.
+
+This was found the hard way — reset was originally bound to BACK, and pressing
+it looked like the app had crashed. It hadn't; the gesture fired correctly every
+time and the process was fine. Only the display was lost.
+
+The effect is contextual. At the root of the device's navigation stack BACK does
+nothing, so the problem is intermittent, which makes it more confusing rather
+than less.
+
+Two consequences, and both matter:
+
+1. **Reset lives on a dial double-click.** `gestures.resetButton` still exists
+   and can be pointed at BACK, but it defaults to `null`. Binding it is opting
+   in to the behaviour above.
+2. **The widget re-asserts itself.** Nothing tells us the screen was taken, and
+   a paused timer's draw signature never changes, so without help the widget
+   would stay gone indefinitely. `behavior.reassertEveryMs` (default 2000)
+   redraws regardless of change, and priority 95 reclaims the panel. This
+   protects against anything that takes the screen, not just BACK.
 
 ### Behaviour on a laggy or spotty network
 
