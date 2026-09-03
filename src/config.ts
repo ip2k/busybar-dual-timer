@@ -186,7 +186,13 @@ const DEFAULTS: Config = {
     holdSeconds: 300,
     // The alarm inverts the whole panel at this rate — solid colour with the
     // text knocked out, alternating with text on black. 0 holds it steady.
-    flashHz: 2,
+    //
+    // 2.5 Hz is not arbitrary: the half-period is 200 ms, exactly one render
+    // tick, so the panel flips once per tick and the flash is even. Rates whose
+    // half-period is not a multiple of the tick beat against it and stutter —
+    // 2 Hz needs 250 ms and visibly drops and doubles frames. Sensible even
+    // choices are 2.5, 1.25 and 0.833 Hz.
+    flashHz: 2.5,
     ledColor: '#E60022FF', // BUSY's brand error red
     sound: { mode: 'asset', file: 'chime.wav', stockPath: null, repeat: 3, repeatEveryMs: 1200 },
   },
