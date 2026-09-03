@@ -52,6 +52,20 @@ feel sluggish — that window is the price of keeping reset off BACK.
    crashing every few hours to days as of Sept 2026 (it pings fine as of this run) — worth confirming it's
    stable before relying on it as a host.
 
+## Port to an on-device app when the JS SDK ships
+
+The intent is to make this a real BUSY Bar app rather than a remote client, once
+BUSY release their JS SDK. Everything off-device is a consequence of what the
+platform supports today.
+
+The module split already anticipates it: `timers.ts`, `render.ts` and `audio.ts`
+are pure and port unchanged; `api.ts` and `index.ts` exist because there is a
+network in the way. A good chunk of the hardening in this repo — device-clock
+gesture timing, `reassertEveryMs`, `maxEventsPerMessage` — is compensating for
+being a remote client and would simply be deleted.
+
+Watch <https://docs.busy.app/bar/dev> for the SDK.
+
 ## Ideas not yet explored
 
 - **Drive `/api/busy/*` instead of rendering our own display.** The firmware has

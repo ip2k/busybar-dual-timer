@@ -221,7 +221,11 @@ class DualTimerApp {
   private blinkOn(): boolean {
     const phase = this.timer.currentPhase;
     if (phase === 'expired') {
-      const period = 1000 / Math.max(1, this.config.expiry.flashHz);
+      // flashHz 0 means hold "DONE" steady rather than strobing. That is the
+      // default: a finished timer wants to be readable, and a 72x16 panel
+      // blinking at 3Hz across the desk is more irritating than informative.
+      if (this.config.expiry.flashHz <= 0) return true;
+      const period = 1000 / this.config.expiry.flashHz;
       return Math.floor(monotonicMs() / (period / 2)) % 2 === 0;
     }
     return Math.floor(monotonicMs() / 500) % 2 === 0;

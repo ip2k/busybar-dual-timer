@@ -35,7 +35,7 @@
 
   "expiry": {
     "flashSeconds": 10,
-    "flashHz": 3,
+    "flashHz": 0,
     "ledColor": "#FF3B30FF",
     "sound": {
       "mode": "asset",

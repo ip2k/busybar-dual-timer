@@ -121,6 +121,36 @@ and 132300 bytes, exactly 0.5 s and 1.5 s of 16-bit mono 44.1 kHz.
 **Lesson for this repo: never mark an output-producing endpoint verified on the
 strength of its status code.**
 
+### Expiry no longer strobes the device UI (2026-09-03)
+
+Reported from use: the "DONE" screen flashed back and forth with the device's
+calendar app. Reproduced from a captured frame sequence — during expiry the
+panel alternated every ~300 ms:
+
+```
+16.25    82 lit  ours
+16.56   374 lit  DEVICE UI   <- leak
+16.87  1070 lit  ours (full-screen flash)
+17.18   379 lit  DEVICE UI   <- leak
+```
+
+Cause was ours, not the device's. The flash emitted different element ids for
+its lit and dark phases, and `render()` clears before drawing whenever the id
+set changes; the firmware's screen is visible in that gap. At `flashHz: 3` the
+gap opened six times a second.
+
+Fixed by keeping the id set stable and painting the covering rectangle black on
+the dark phase, and by defaulting `expiry.flashHz` to `0` so "DONE" simply holds.
+Verified on hardware — 7+ seconds of expiry sampled at 350 ms, every frame ours,
+no leaks:
+
+```
+ 5.4s lit=1070 ours     ... 12.8s lit=1070 ours
+```
+
+The regression test was checked by reintroducing the old behaviour and
+confirming the suite fails.
+
 ### The remapped control scheme, by hand (2026-09-03)
 
 Confirmed on the device by a person using the physical controls: START

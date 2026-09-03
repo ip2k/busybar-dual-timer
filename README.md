@@ -21,6 +21,11 @@ flash and nothing to undo — stop the program and the Bar goes back to normal.
 
 **Zero runtime dependencies.** Node and nothing else.
 
+> **On-device is the plan.** Running off-device is a consequence of what's
+> available today, not the end state. When BUSY ship their JS SDK for real
+> on-device apps, the intent is to port this into a proper BUSY Bar app.
+> [What that changes →](#what-an-on-device-port-would-change)
+
 ---
 
 ## Controls
@@ -301,6 +306,32 @@ seen replaying a large batch of historical input at once, so oversized bursts
 are dropped rather than firing dozens of actions.
 
 ---
+
+## What an on-device port would change
+
+This is written to run off-device because that is what the Bar supports today.
+When the JS SDK for on-device apps ships, the plan is to port it — and the split
+is deliberately drawn so that most of the code doesn't care.
+
+`timers.ts`, `render.ts` and `audio.ts` are pure: state machine, layout, audio
+conversion, no I/O. Those port unchanged. `api.ts` and `index.ts` are the parts
+that exist because there is a network in the way, and they are the parts that
+would go.
+
+Several things in here are workarounds for being a remote client, and would
+simply stop being problems:
+
+| Today | On-device |
+| --- | --- |
+| Gesture timing measured with the device clock, because a laggy link distorts arrival times | input is local; no clock skew to reason about |
+| `reassertEveryMs` redrawing to reclaim the panel | an app owns its screen |
+| `maxEventsPerMessage` guarding against replayed input bursts | no stream to replay |
+| `doubleTapMs` latency on a dial click | unchanged — that one is about human timing, not networking |
+
+The hardware findings in [docs/busy-bar-api.md](docs/busy-bar-api.md) should
+mostly survive a port, since they describe the device rather than the transport:
+the button and dial wire formats, BACK popping the navigation stack, the audio
+format, and the fact that a `200` from the audio endpoint means nothing.
 
 ## Development
 

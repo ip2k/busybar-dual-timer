@@ -240,6 +240,30 @@ assert.ok(bar && bar.type === 'rectangle' && bar.width === 36, 'half-elapsed bar
 for (const element of payload.elements) {
   assert.ok(element.x >= 0 && element.x < 72 && element.y >= 0 && element.y < 16, `${element.id} out of bounds`);
 }
+// The expiry flash must emit a STABLE set of element ids. index.ts clears the
+// display whenever the id set changes, and a clear leaves the device's own UI
+// showing until the next draw lands -- so an id set that changed with the blink
+// made the alarm strobe between DONE and the device's clock screen. Observed on
+// hardware; this is the guard.
+{
+  const expired = {
+    index: 0, label: 'A', color: '#3BA7FFFF',
+    phase: 'expired' as const, remainingMs: 0, totalMs: 1_500_000, fraction: 0,
+  };
+  const opts = { applicationName: 'dual_timer', priority: 95 };
+  const ids = (blinkOn: boolean) =>
+    buildPayload({ snapshot: expired, blinkOn }, opts).elements.map((e) => e.id).sort().join(',');
+  assert.equal(ids(true), ids(false), 'expiry element ids must not change with the blink');
+
+  // Both phases must paint the full panel, so the device UI can never show
+  // through even if a redraw is slow.
+  for (const blinkOn of [true, false]) {
+    const cover = buildPayload({ snapshot: expired, blinkOn }, opts).elements.find((e) => e.id === 'flash');
+    assert.ok(cover, `expiry must always draw a covering rectangle (blinkOn=${blinkOn})`);
+    assert.equal(cover.width, 72);
+    assert.equal(cover.height, 16);
+  }
+}
 console.log('render: ok');
 
 // 7. Chime is well-formed 16-bit PCM.

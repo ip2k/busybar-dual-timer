@@ -100,7 +100,7 @@ const DEFAULTS: Config = {
   },
   expiry: {
     flashSeconds: 10,
-    flashHz: 3,
+    flashHz: 0, // 0 = hold DONE steady; >0 strobes at that rate
     ledColor: '#FF3B30FF',
     sound: { mode: 'asset', file: 'chime.wav', stockPath: null, repeat: 3, repeatEveryMs: 1200 },
   },
@@ -161,6 +161,7 @@ function validate(cfg: Config): void {
   assert(cfg.gestures.maxSeconds > 0, 'gestures.maxSeconds must be > 0');
   assert(cfg.behavior.reassertEveryMs >= 0, 'behavior.reassertEveryMs must be >= 0 (0 disables it)');
   assert(cfg.behavior.maxEventsPerMessage >= 0, 'behavior.maxEventsPerMessage must be >= 0 (0 disables the guard)');
+  assert(cfg.expiry.flashHz >= 0, 'expiry.flashHz must be >= 0 (0 holds DONE steady)');
   assert(HEX_RGBA.test(cfg.expiry.ledColor), 'expiry.ledColor must be #RRGGBBAA');
   assert(['asset', 'stock', 'none'].includes(cfg.expiry.sound.mode), "expiry.sound.mode must be 'asset', 'stock' or 'none'");
   if (cfg.expiry.sound.mode === 'stock') {

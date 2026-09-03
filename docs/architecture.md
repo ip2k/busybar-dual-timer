@@ -103,6 +103,32 @@ Two consequences, and both matter:
    redraws regardless of change, and priority 95 reclaims the panel. This
    protects against anything that takes the screen, not just BACK.
 
+### Draw elements are keyed by id, and that has teeth
+
+A draw is a set of elements with ids. When the ids change between frames, stale
+ones would linger, so `index.ts` clears first and then draws. **Between those two
+calls the firmware's own screen is visible.**
+
+That cost a real bug. The expiry flash originally emitted a full-screen
+rectangle plus text when lit, and text alone when dark. Different id sets, so
+every blink forced a clear — and at `flashHz` the alarm strobed between "DONE"
+and the device's clock/calendar screen several times a second. It looked like a
+rendering fault on the device; it was ours.
+
+The rule that falls out: **change an element's colour, never its existence.** The
+expiry flash now always draws the rectangle and simply paints it black on the
+dark phase, which keeps the id set stable (no clear, no gap) and covers the
+device UI even if a redraw is slow. A test asserts both phases emit the same ids
+and that both cover the full panel.
+
+The paused blink never had this problem because it only ever varied a colour's
+alpha — which is exactly the pattern to copy.
+
+By default the expiry does not blink at all: `expiry.flashHz` is `0`, holding
+"DONE" steady. A finished timer wants to be readable, and a 72×16 panel strobing
+across a desk is more irritating than informative. Set it above zero to bring
+the flash back.
+
 ### Behaviour on a laggy or spotty network
 
 The countdown itself never touches the network. `timers.ts` is driven by a local

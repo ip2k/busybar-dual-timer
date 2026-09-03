@@ -84,21 +84,20 @@ function normalElements(state: RenderState): DisplayElement[] {
 
 function expiredElements(state: RenderState): DisplayElement[] {
   const { snapshot, blinkOn } = state;
-  if (!blinkOn) {
-    return [
-      {
-        id: 'time',
-        type: 'text',
-        x: 36,
-        y: 8,
-        align: 'center',
-        display: 'front',
-        text: `${snapshot.label} DONE`,
-        font: 'normal',
-        color: withAlpha(snapshot.color, '66'),
-      },
-    ];
-  }
+
+  // Both phases emit the SAME element ids, and the flash rectangle is always
+  // present — it just turns black instead of disappearing.
+  //
+  // This is load-bearing, not tidiness. `index.ts` clears before drawing
+  // whenever the set of element ids changes, and a clear leaves the panel
+  // showing whatever the firmware has underneath until the draw lands. At
+  // `flashHz` that gap opened several times a second, so the alarm strobed
+  // between "DONE" and the device's own clock/calendar screen instead of
+  // between "DONE" and black.
+  //
+  // Keeping the ids stable means no clear, no gap, and the black rectangle
+  // covers the device UI even if a redraw is slow.
+  const lit = blinkOn;
   return [
     {
       id: 'flash',
@@ -109,7 +108,7 @@ function expiredElements(state: RenderState): DisplayElement[] {
       height: HEIGHT,
       display: 'front',
       fill: 'solid',
-      fill_colors: [snapshot.color],
+      fill_colors: [lit ? snapshot.color : '#000000FF'],
       border_width: 0,
     },
     {
@@ -121,7 +120,7 @@ function expiredElements(state: RenderState): DisplayElement[] {
       display: 'front',
       text: `${snapshot.label} DONE`,
       font: 'normal',
-      color: '#000000FF',
+      color: lit ? '#000000FF' : withAlpha(snapshot.color, '66'),
     },
   ];
 }

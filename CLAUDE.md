@@ -139,7 +139,14 @@ smoke test meaningful. I/O belongs in `api.ts` and orchestration in `index.ts`.
    network a stall delivers buffered events all at once and they look
    simultaneous. Use the device's own `State.timestamp` (Unix ms, in every
    message) — that's what `parseState` returns it for.
-11. **The stream can deliver a big backlog of input in one message.** Observed
+11. **Changing the set of element ids forces a clear, and a clear shows the
+   device UI.** `render()` clears before drawing when the id set changes, and
+   between the clear and the draw the firmware's own screen is visible. The
+   expiry flash used to emit different ids for its lit and dark phases, so the
+   alarm strobed between "DONE" and the device's clock screen several times a
+   second. Keep an element present and change its colour instead of adding and
+   removing it. Covered by a test.
+12. **The stream can deliver a big backlog of input in one message.** Observed
    once: ~70 historical events at connect. Acting on it would fire dozens of
    toggles and resets, so `behavior.maxEventsPerMessage` drops oversized bursts.
 
