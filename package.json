@@ -13,11 +13,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ip2k/busy-dual-timer.git"
+    "url": "git+https://github.com/ip2k/busybar-dual-timer.git"
   },
-  "homepage": "https://github.com/ip2k/busy-dual-timer#readme",
+  "homepage": "https://github.com/ip2k/busybar-dual-timer#readme",
   "bugs": {
-    "url": "https://github.com/ip2k/busy-dual-timer/issues"
+    "url": "https://github.com/ip2k/busybar-dual-timer/issues"
   },
   "type": "module",
   "engines": {

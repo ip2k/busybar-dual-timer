@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Open a [security advisory](https://github.com/ip2k/busy-dual-timer/security/advisories/new)
+Open a [security advisory](https://github.com/ip2k/busybar-dual-timer/security/advisories/new)
 rather than a public issue. If that isn't available to you, open a normal issue
 saying only that you have a security report and asking for a contact — please
 don't include details in it.

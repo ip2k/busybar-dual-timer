@@ -1,6 +1,9 @@
 # busybar-dual-timer
 
-[![CI](https://github.com/ip2k/busy-dual-timer/actions/workflows/ci.yml/badge.svg)](https://github.com/ip2k/busy-dual-timer/actions/workflows/ci.yml)
+[![CI](https://github.com/ip2k/busybar-dual-timer/actions/workflows/ci.yml/badge.svg)](https://github.com/ip2k/busybar-dual-timer/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/busybar-dual-timer)](https://www.npmjs.com/package/busybar-dual-timer)
+[![node](https://img.shields.io/node/v/busybar-dual-timer)](https://nodejs.org)
+[![license](https://img.shields.io/npm/l/busybar-dual-timer)](LICENSE)
 
 Two countdowns on a [BUSY Bar](https://busy.bar), switched with the dial.
 
@@ -8,7 +11,7 @@ Timer **A** for work, timer **B** for a break. Click the dial to switch between
 them; each one remembers where it was. Turn the dial to set the time without
 touching a config file.
 
-![The timer running on a BUSY Bar](https://raw.githubusercontent.com/ip2k/busy-dual-timer/main/docs/demo.gif)
+![The timer running on a BUSY Bar](https://raw.githubusercontent.com/ip2k/busybar-dual-timer/main/docs/demo.gif)
 
 *Real frames captured off the device: timer A counting, a dial click switching to
 B, switching back to find A exactly where it was, and the finished timer holding
@@ -29,7 +32,7 @@ flash and nothing to undo — stop the program and the Bar goes back to normal.
 
 ## Controls
 
-![The BUSY Bar's controls](https://raw.githubusercontent.com/ip2k/busy-dual-timer/main/docs/controls.jpg)
+![The BUSY Bar's controls](https://raw.githubusercontent.com/ip2k/busybar-dual-timer/main/docs/controls.jpg)
 
 | Control | Action |
 | --- | --- |
@@ -100,7 +103,7 @@ API. Config is looked for in this order:
 there is no build step and nothing to compile.
 
 Prefer no npm at all? Every release also ships a tarball on the
-**[Releases](https://github.com/ip2k/busy-dual-timer/releases)** page — unpack
+**[Releases](https://github.com/ip2k/busybar-dual-timer/releases)** page — unpack
 it and run `node dist/index.js`. Each one has a `.sha256` beside it.
 
 Everything below is for running from source or contributing.

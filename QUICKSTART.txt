@@ -27,4 +27,4 @@ Controls
 
 Ctrl-C hands the screen back to the device.
 
-Full documentation: https://github.com/ip2k/busy-dual-timer
+Full documentation: https://github.com/ip2k/busybar-dual-timer

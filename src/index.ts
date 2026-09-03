@@ -500,7 +500,7 @@ Controls
   wheel turn     +/- 1 minute        wheel press        switch timer A / B
   hold + turn    +/- 5 seconds       press twice        reset
 
-Put the mode lever on CUSTOM. Docs: https://github.com/ip2k/busy-dual-timer`;
+Put the mode lever on CUSTOM. Docs: https://github.com/ip2k/busybar-dual-timer`;
 
 const argv = process.argv.slice(2);
 const flag = (name: string) => argv.includes(name);
