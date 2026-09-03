@@ -6,6 +6,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Nothing here needs to write. Being explicit means the job keeps a read-only
+# token even if the repository default changes.
+permissions:
+  contents: read
+
 jobs:
   check:
     name: Node ${{ matrix.node }}

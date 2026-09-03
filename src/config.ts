@@ -221,6 +221,26 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`config: ${message}`);
 }
 
+
+/**
+ * Asset filenames must be bare names, not paths.
+ *
+ * `expiry.sound.file` and `timers[].sound.file` are joined onto an assets
+ * directory and the result is read and uploaded to the device. Left unchecked,
+ * `../../../../etc/passwd` — or any absolute path — escapes that directory and
+ * the file's contents leave the machine. Nobody needs a path here, so the
+ * simplest fix is to require a plain filename.
+ */
+function assertBareFilename(value: string, key: string): void {
+  assert(value.length > 0, `${key} must not be empty`);
+  assert(
+    !value.includes('/') && !value.includes('\\'),
+    `${key} must be a bare filename, not a path (got ${JSON.stringify(value)})`,
+  );
+  assert(value !== '.' && value !== '..', `${key} must be a filename`);
+  assert(!value.startsWith('.'), `${key} must not start with a dot`);
+}
+
 function validate(cfg: Config): void {
   assert(typeof cfg.device.host === 'string' && cfg.device.host.length > 0, 'device.host is required');
   assert(Array.isArray(cfg.timers) && cfg.timers.length === 2, 'timers must contain exactly two entries');
@@ -230,6 +250,9 @@ function validate(cfg: Config): void {
     assert(HEX_RGBA.test(timer.color), `timers[${i}].color must be #RRGGBBAA`);
     if (timer.ledColor !== undefined) {
       assert(HEX_RGBA.test(timer.ledColor), `timers[${i}].ledColor must be #RRGGBBAA`);
+    }
+    if (timer.sound?.file !== undefined) {
+      assertBareFilename(timer.sound.file, `timers[${i}].sound.file`);
     }
     if (timer.sound?.tones !== undefined) {
       assert(
@@ -290,8 +313,15 @@ function validate(cfg: Config): void {
   assert(cfg.expiry.flashHz >= 0, 'expiry.flashHz must be >= 0 (0 holds DONE steady)');
   assert(HEX_RGBA.test(cfg.expiry.ledColor), 'expiry.ledColor must be #RRGGBBAA');
   assert(['asset', 'stock', 'none'].includes(cfg.expiry.sound.mode), "expiry.sound.mode must be 'asset', 'stock' or 'none'");
+  assertBareFilename(cfg.expiry.sound.file, 'expiry.sound.file');
   if (cfg.expiry.sound.mode === 'stock') {
     assert(!!cfg.expiry.sound.stockPath, "expiry.sound.stockPath is required when sound.mode is 'stock'");
+    // Sent verbatim to the device; keep it to the shape the firmware documents
+    // rather than letting a config poke at arbitrary device paths.
+    assert(
+      /^shared\/[a-z0-9_.]+$/.test(cfg.expiry.sound.stockPath!),
+      "expiry.sound.stockPath must look like 'shared/name.snd'",
+    );
   }
 }
 

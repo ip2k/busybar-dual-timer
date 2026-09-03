@@ -637,6 +637,25 @@ what has actually been proven on hardware, and what hasn't.
 - Your own Bar serves its spec at `http://<bar>/openapi.yaml` and rendered docs
   at `http://<bar>/docs/`
 
+## Security
+
+This runs on your machine and talks to a device on your network, so the short
+version:
+
+- **Zero runtime dependencies**, so there is no transitive package surface.
+- **It contacts exactly one host: the Bar you configured.** No telemetry, no
+  update checks, no third-party endpoints — two call sites in `src/api.ts`.
+- **Your API token is never logged**, and lives only in `config.json`, which is
+  gitignored and excluded from both the npm package and release tarballs.
+- **The Bar's local API is plain HTTP**, so on Wi-Fi the token crosses your LAN
+  in cleartext. That's the device's design. Over USB (`10.0.4.20`) no token is
+  needed at all.
+- **Releases are built and published by CI**, with npm provenance and a
+  `.sha256` on every artifact.
+
+Full detail, including how to report a vulnerability, is in
+**[SECURITY.md](SECURITY.md)**.
+
 ## Contributing
 
 Pull requests welcome — see **[CONTRIBUTING.md](CONTRIBUTING.md)**. Worth reading

@@ -8,6 +8,10 @@ import { parseInputEvents } from '../src/proto.ts';
 import { GestureRecognizer, type Gesture } from '../src/gestures.ts';
 import { parseState } from '../src/proto.ts';
 import { decodeWav, detectFormat, ffmpegCommand, isWav, toDevicePcm } from '../src/audio.ts';
+import { loadConfig } from '../src/config.ts';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DualTimer } from '../src/timers.ts';
 import { formatDuration, buildPayload } from '../src/render.ts';
 import { generateChime, tonesForSlot } from '../src/chime.ts';
@@ -447,5 +451,42 @@ assert.match(cmd, /-f s16le/);
 assert.match(cmd, /-ac 1/);
 assert.match(cmd, /-ar 44100/);
 console.log('audio: ok');
+
+// 9. Config safety. Asset filenames are joined onto a directory and the result
+//    is read and uploaded to the device, so a path here would let a hostile
+//    config exfiltrate an arbitrary local file. Bare filenames only.
+{
+  const dir = mkdtempSync(join(tmpdir(), 'bdt-'));
+  const write = (patch: Record<string, unknown>) => {
+    const file = join(dir, `${Math.random().toString(36).slice(2)}.json`);
+    writeFileSync(file, JSON.stringify(patch));
+    return file;
+  };
+
+  for (const bad of ['../../../../etc/passwd', '/etc/passwd', 'sub/dir.wav', '..', '.hidden', '']) {
+    assert.throws(
+      () => loadConfig(write({ expiry: { sound: { file: bad } } })),
+      /bare filename|must be a filename|must not be empty|must not start with a dot/,
+      `expiry.sound.file ${JSON.stringify(bad)} must be rejected`,
+    );
+  }
+
+  // Per-timer sound files go through the same path, so they get the same guard.
+  assert.throws(
+    () => loadConfig(write({ timers: [{ label: 'A', seconds: 60, color: '#2B7FFFFF', sound: { file: '../x.wav' } }, { label: 'B', seconds: 60, color: '#33D17AFF' }] })),
+    /bare filename/,
+  );
+
+  // stock_path is sent verbatim to the device; keep it to the documented shape.
+  assert.throws(
+    () => loadConfig(write({ expiry: { sound: { mode: 'stock', stockPath: '../../etc/passwd' } } })),
+    /shared\/name\.snd/,
+  );
+
+  // A plain filename is still fine.
+  const ok = loadConfig(write({ expiry: { sound: { file: 'chime.wav' } } }));
+  assert.equal(ok.config.expiry.sound.file, 'chime.wav');
+}
+console.log('config safety: ok');
 
 console.log('\nall checks passed');
