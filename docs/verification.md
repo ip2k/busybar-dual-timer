@@ -184,6 +184,11 @@ hardware:
 02:38:30  [expiry] timer A finished (silently — lever is elsewhere)
 ```
 
+Confirmed by the person at the device: **"it's quiet and no lights flashed."**
+The log only proves the call was never made; a human confirming silence is what
+actually verifies it, given this project's rule that audio cannot be verified
+from a status code.
+
 An earlier attempt at this test was inconclusive because the lever stayed on
 CUSTOM and the timer expired while active — the alarm sounded, correctly. Worth
 recording that the first run proved nothing, rather than counting it.
