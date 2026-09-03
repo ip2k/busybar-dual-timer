@@ -37,6 +37,18 @@ export interface TimerConfig {
 export interface Config {
   device: { host: string; apiToken: string | null };
   app: { name: string; priority: number };
+  display: {
+    /**
+     * Display brightness while this runs.
+     *
+     * `"auto"` hands it to the Bar's ambient light sensor. A number 0-100 pins
+     * it. `null` (the default) leaves the device's own setting alone.
+     *
+     * Brightness is device-wide rather than per-app, so whatever was set before
+     * is restored on a clean shutdown.
+     */
+    brightness: 'auto' | number | null;
+  };
   timers: [TimerConfig, TimerConfig];
   gestures: {
     toggleButton: ButtonName;
@@ -125,6 +137,7 @@ const DEFAULTS: Config = {
   // works with no token and no network setup — the best default for a first run.
   device: { host: '10.0.4.20', apiToken: null },
   app: { name: 'dual_timer', priority: 95 },
+  display: { brightness: null },
   timers: [
     { label: 'A', seconds: 1500, color: '#3BA7FFFF' },
     { label: 'B', seconds: 300, color: '#33D17AFF' },
@@ -228,6 +241,13 @@ function validate(cfg: Config): void {
     assert(
       ['busy', 'custom', 'off', 'apps', 'settings'].includes(cfg.behavior.activeSwitchPosition),
       "behavior.activeSwitchPosition must be null or one of 'busy', 'custom', 'off', 'apps', 'settings'",
+    );
+  }
+  const brightness = cfg.display.brightness;
+  if (brightness !== null) {
+    assert(
+      brightness === 'auto' || (Number.isInteger(brightness) && brightness >= 0 && brightness <= 100),
+      "display.brightness must be null, 'auto', or an integer 0-100",
     );
   }
   assert(

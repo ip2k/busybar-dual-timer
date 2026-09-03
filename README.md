@@ -214,6 +214,32 @@ than making you flick a switch. The log says so on startup:
 Every key is optional — your `config.json` is merged over the defaults, so you
 only write what you want to change.
 
+### Display brightness
+
+```json
+"display": { "brightness": null }
+```
+
+| Value | Effect |
+| --- | --- |
+| `null` (default) | leave the device's own setting alone |
+| `"auto"` | hand it to the Bar's **ambient light sensor** |
+| `0`–`100` | pin it |
+
+Auto genuinely uses the light sensor — the firmware's brightness handler calls
+`brightness_control_set_auto_brightness()` and pulls in `light_sensor.h`.
+
+Brightness is a **device-wide** setting, not a per-app one, so changing it here
+is a borrow rather than a takeover: whatever was set before is restored on a
+clean shutdown.
+
+Worth checking what yours is currently set to — a Bar sitting at `5` looks dim
+under normal room lighting, and that has nothing to do with this app:
+
+```bash
+curl http://<bar>/api/display/brightness
+```
+
 ### Timers — lengths, labels and colours
 
 ```json

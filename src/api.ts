@@ -102,6 +102,27 @@ export class BusyBarClient {
   }
 
   /** Push a synthetic key press (same endpoint the phone app uses). Handy for testing. */
+  /** Current display brightness: "auto", or "0".."100" as a string. */
+  async getBrightness(): Promise<string | null> {
+    try {
+      const response = await this.request('GET', '/api/display/brightness');
+      const body = (await response.json()) as { value?: string };
+      return body.value ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Set display brightness. `auto` hands it to the ambient light sensor.
+   *
+   * This is a device-wide setting, not an app one — it outlives this process,
+   * which is why the caller restores whatever was there before on shutdown.
+   */
+  async setBrightness(value: string): Promise<void> {
+    await this.request('POST', `/api/display/brightness?value=${encodeURIComponent(value)}`);
+  }
+
   async sendInput(key: string): Promise<void> {
     await this.request('POST', `/api/input?key=${encodeURIComponent(key)}`);
   }

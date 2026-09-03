@@ -9,6 +9,10 @@
     "priority": 95
   },
 
+  "display": {
+    "brightness": null
+  },
+
   "timers": [
     { "label": "A", "seconds": 1500, "color": "#3BA7FFFF", "ledColor": "#3BA7FFFF" },
     { "label": "B", "seconds": 300,  "color": "#33D17AFF", "ledColor": "#33D17AFF" }

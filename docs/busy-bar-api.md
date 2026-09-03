@@ -236,6 +236,19 @@ An asset uploaded by this app shows up at `/ext/user_assets/dual_timer/` — han
 for confirming an upload actually landed, since the upload response is as
 uninformative as the playback one.
 
+### Brightness and the ambient light sensor (verified)
+
+`GET /api/display/brightness` → `{"value":"5"}` — a string, either `auto` or
+`0`–`100`. `POST /api/display/brightness?value=<auto|0-100>` sets it.
+
+`auto` really does use the ambient light sensor: the firmware's CLI handler
+calls `brightness_control_set_auto_brightness()` and the file includes
+`light_sensor/light_sensor.h`. There is a whole `light_sensor` service in
+`applications/services/light_sensor/`.
+
+It is device-wide, not per-app, and it persists after your program exits — so
+anything that changes it should put it back.
+
 ### Encoder, switch and button wire formats (verified)
 
 All three input kinds were captured off `/api/status/ws` with a raw dumper, so

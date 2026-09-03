@@ -45,6 +45,8 @@ class DualTimerApp {
    */
   private ledPending = false;
   private lastLedPhase = '';
+  /** Device brightness before we touched it, so it can be put back. */
+  private previousBrightness: string | null = null;
   /** Last lever position seen. Null until it moves — no endpoint reports it. */
   private switchPosition: string | null = null;
   private cleared = false;
@@ -73,6 +75,7 @@ class DualTimerApp {
     log(`[bar] ${this.config.device.host} firmware API ${version.api_semver ?? 'unknown'}`);
 
     await this.prepareSound();
+    await this.applyBrightness();
 
     if (!this.config.behavior.startPaused) this.timer.toggle();
 
@@ -104,6 +107,37 @@ class DualTimerApp {
       await this.client.clear(this.config.app.name);
     } catch (error) {
       log('[shutdown] could not clear display:', (error as Error).message);
+    }
+    if (this.previousBrightness !== null) {
+      try {
+        await this.client.setBrightness(this.previousBrightness);
+        log(`[shutdown] brightness restored to ${this.previousBrightness}`);
+      } catch (error) {
+        log('[shutdown] could not restore brightness:', (error as Error).message);
+      }
+    }
+  }
+
+  /**
+   * Apply the configured brightness, remembering what was there first.
+   *
+   * Brightness belongs to the device, not to this app, so changing it is a
+   * borrow rather than a takeover — `stop()` puts it back.
+   */
+  private async applyBrightness(): Promise<void> {
+    const wanted = this.config.display.brightness;
+    if (wanted === null) return;
+    this.previousBrightness = await this.client.getBrightness();
+    const value = String(wanted);
+    try {
+      await this.client.setBrightness(value);
+      log(
+        `[display] brightness ${value}${wanted === 'auto' ? ' (ambient light sensor)' : ''}` +
+          `${this.previousBrightness ? `, was ${this.previousBrightness}` : ''}`,
+      );
+    } catch (error) {
+      this.previousBrightness = null;
+      log('[display] could not set brightness:', (error as Error).message);
     }
   }
 
