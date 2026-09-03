@@ -10,11 +10,11 @@
   },
 
   "display": {
-    "brightness": null
+    "brightness": "auto"
   },
 
   "timers": [
-    { "label": "A", "seconds": 1500, "color": "#3BA7FFFF", "ledColor": "#3BA7FFFF" },
+    { "label": "A", "seconds": 1500, "color": "#2B7FFFFF", "ledColor": "#2B7FFFFF" },
     { "label": "B", "seconds": 300,  "color": "#33D17AFF", "ledColor": "#33D17AFF" }
   ],
 
@@ -42,7 +42,7 @@
   "expiry": {
     "flashSeconds": 10,
     "flashHz": 0,
-    "ledColor": "#FF3B30FF",
+    "ledColor": "#E60022FF",
     "sound": {
       "mode": "asset",
       "file": "chime.wav",

@@ -25,10 +25,23 @@ export interface RenderState {
   blinkOn: boolean;
 }
 
-function timeFont(text: string): 'large' | 'condensed' | 'normal' {
-  if (text.length <= 5) return 'large';
-  if (text.length <= 7) return 'condensed';
-  return 'normal';
+/**
+ * Fonts are the device's own, so the widget reads as native rather than as
+ * something bolted on. The names map to real firmware fonts:
+ *
+ *   tiny → busy_tiny            small → busy_regular_5    normal → busy_regular_7
+ *   condensed → busy_condensed_7   bold → busy_bold_7     large → busy_regular_9
+ *   extra_large → busy_bold_10     global → lana_pixel_11
+ *
+ * The built-in clock app draws its time in `bold` (busy_bold_7) and its
+ * secondary text in `small` (busy_regular_5). This widget has only one line to
+ * show, so it goes a size bigger: `extra_large` (busy_bold_10) is the same
+ * family, heavier and taller, and measured at 53 of 72 columns for `1:01:01` —
+ * so it fits every duration this can display up to 9:59:59.
+ */
+function timeFont(text: string): 'extra_large' | 'condensed' {
+  // Past 7 characters even bold_10 overflows 72px; condensed is the fallback.
+  return text.length <= 7 ? 'extra_large' : 'condensed';
 }
 
 /**
@@ -95,7 +108,7 @@ function elementsFor(state: RenderState): DisplayElement[] {
       align: 'top_left',
       display: 'front',
       text: snapshot.label,
-      font: 'tiny',
+      font: 'small',
       color: expired ? INVISIBLE : idle ? withAlpha(snapshot.color, '99') : snapshot.color,
     },
     {
@@ -106,7 +119,7 @@ function elementsFor(state: RenderState): DisplayElement[] {
       align: 'center',
       display: 'front',
       text,
-      font: expired ? 'normal' : timeFont(text),
+      font: expired ? 'bold' : timeFont(text),
       color: timeColor,
     },
   ];

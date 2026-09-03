@@ -217,24 +217,32 @@ only write what you want to change.
 ### Display brightness
 
 ```json
-"display": { "brightness": null }
+"display": { "brightness": "auto" }
 ```
 
 | Value | Effect |
 | --- | --- |
-| `null` (default) | leave the device's own setting alone |
-| `"auto"` | hand it to the Bar's **ambient light sensor** |
+| `"auto"` (default) | hand it to the Bar's **ambient light sensor** |
 | `0`–`100` | pin it |
+| `null` | leave the device's own setting completely alone |
 
-Auto genuinely uses the light sensor — the firmware's brightness handler calls
-`brightness_control_set_auto_brightness()` and pulls in `light_sensor.h`.
+**Why `auto` is the default.** A timer is only useful if you can read it, and a
+fixed brightness is wrong half the time — a value that suits a bright office is
+glaring in a dark room, and one that suits evening is invisible under overhead
+lights. The Bar has an ambient light sensor, so let it decide.
 
-Brightness is a **device-wide** setting, not a per-app one, so changing it here
-is a borrow rather than a takeover: whatever was set before is restored on a
-clean shutdown.
+This is not a placebo: the firmware's brightness handler calls
+`brightness_control_set_auto_brightness()` and pulls in `light_sensor.h`, with a
+whole `light_sensor` service behind it.
 
-Worth checking what yours is currently set to — a Bar sitting at `5` looks dim
-under normal room lighting, and that has nothing to do with this app:
+**Two things to know before leaving it on.** Brightness is a **device-wide**
+setting, not a per-app one — so this app changes something that outlives it.
+Whatever was set before is read at startup and restored on a clean shutdown, but
+a hard kill (`kill -9`, power loss) skips that and leaves the device on `auto`.
+If the app must never touch the device's settings, set `null`.
+
+Also worth checking what yours is set to before blaming this app for a dim
+panel — a Bar sitting at `5` looks dim under normal room lighting:
 
 ```bash
 curl http://<bar>/api/display/brightness

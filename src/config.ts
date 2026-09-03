@@ -41,11 +41,13 @@ export interface Config {
     /**
      * Display brightness while this runs.
      *
-     * `"auto"` hands it to the Bar's ambient light sensor. A number 0-100 pins
-     * it. `null` (the default) leaves the device's own setting alone.
+     * `"auto"` (the default) hands it to the Bar's ambient light sensor, so the
+     * panel is readable in a bright room and not blinding in a dark one. A
+     * number 0-100 pins it; `null` leaves the device's own setting alone.
      *
-     * Brightness is device-wide rather than per-app, so whatever was set before
-     * is restored on a clean shutdown.
+     * Brightness is device-wide rather than per-app. Whatever was set before is
+     * read at startup and restored on a clean shutdown — but a hard kill skips
+     * that, so `null` is the choice if the app must never touch it at all.
      */
     brightness: 'auto' | number | null;
   };
@@ -140,9 +142,10 @@ const DEFAULTS: Config = {
   // works with no token and no network setup — the best default for a first run.
   device: { host: '10.0.4.20', apiToken: null },
   app: { name: 'dual_timer', priority: 95 },
-  display: { brightness: null },
+  display: { brightness: 'auto' },
   timers: [
-    { label: 'A', seconds: 1500, color: '#3BA7FFFF' },
+    // #2B7FFF is BUSY's own brand blue, from the firmware's web UI.
+    { label: 'A', seconds: 1500, color: '#2B7FFFFF' },
     { label: 'B', seconds: 300, color: '#33D17AFF' },
   ],
   gestures: {
@@ -169,7 +172,7 @@ const DEFAULTS: Config = {
   expiry: {
     flashSeconds: 10,
     flashHz: 0, // 0 = hold DONE steady; >0 strobes at that rate
-    ledColor: '#FF3B30FF',
+    ledColor: '#E60022FF', // BUSY's brand error red
     sound: { mode: 'asset', file: 'chime.wav', stockPath: null, repeat: 3, repeatEveryMs: 1200 },
   },
 };

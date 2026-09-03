@@ -163,6 +163,42 @@ redraw interval. Documented as a limitation rather than half-built.
 **Chimes.** A's and B's expiry sounds were confirmed audibly different — A rises,
 B falls a fourth lower.
 
+### Native fonts and brand colours (2026-09-03)
+
+The draw API's font names map to real firmware fonts, read from `api_display.c`:
+
+| API name | Firmware font |
+| --- | --- |
+| `tiny` | busy_tiny |
+| `small` | busy_regular_5 |
+| `normal` | busy_regular_7 |
+| `condensed` | busy_condensed_7 |
+| `bold` | busy_bold_7 |
+| `large` | busy_regular_9 |
+| `extra_large` | busy_bold_10 |
+| `global` | lana_pixel_regular_11 |
+| `superscript` | busy_superscript_7 |
+
+Only four of these appear in the published docs; `small`, `bold`, `extra_large`
+and `global` were found in the firmware source.
+
+The built-in clock app draws its time in `bold` (busy_bold_7) and its secondary
+text in `small` (busy_regular_5), with a `0x323232` grey for de-emphasis — the
+same grey seen in frame grabs of the device UI.
+
+Compared on hardware by rendering the same string in each: `large`
+(busy_regular_9, previously used here) is thin, while **`extra_large`
+(busy_bold_10) is bold and tall** and far more readable at a glance. It also
+fits — `1:01:01` measured **53 of 72 columns**, so it covers every duration up
+to 9:59:59, with `condensed` as the fallback beyond that.
+
+Colours now come from BUSY's own palette in the firmware's web UI
+(`assets/frontend/assets/css/global.css`): `--color-brand: #2B7FFF` for timer A
+and `--color-error-500: #E60022` for the expiry alarm.
+
+Verified on the panel: label in busy_regular_5, time in busy_bold_10, brand blue
+`2b7fff`, with `auto` brightness applied over a previous value of 5.
+
 ### A finished timer stays finished (2026-09-03)
 
 Reported from use: after expiring while the lever was away, flipping back showed

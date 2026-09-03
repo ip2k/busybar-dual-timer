@@ -236,6 +236,33 @@ An asset uploaded by this app shows up at `/ext/user_assets/dual_timer/` — han
 for confirming an upload actually landed, since the upload response is as
 uninformative as the playback one.
 
+### Font names, and the four the docs don't mention
+
+`api_display.c` maps the draw API's `font` values onto real firmware fonts:
+
+| API `font` | Firmware font |
+| --- | --- |
+| `tiny` | busy_tiny |
+| `small` | busy_regular_5 |
+| `normal` | busy_regular_7 |
+| `condensed` | busy_condensed_7 |
+| `bold` | busy_bold_7 |
+| `large` | busy_regular_9 |
+| `extra_large` | busy_bold_10 |
+| `global` | lana_pixel_regular_11 |
+| `superscript` | busy_superscript_7 |
+
+**`small`, `bold`, `extra_large` and `global` are not in the published docs.**
+`extra_large` (busy_bold_10) is the largest and the only heavy face big enough
+to dominate a 72×16 panel — `1:01:01` in it measures 53 of 72 columns.
+
+To look native, copy the built-in apps: the clock draws its time in `bold` and
+its secondary text in `small`, with `#323232` for de-emphasis.
+
+Brand colours live in `assets/frontend/assets/css/global.css`: `#2B7FFF` brand,
+`#E60022` error. The UI font is Inter; the panel fonts are OFL-licensed and the
+graphical assets are CC-BY-SA-4.0, so they can be reused with attribution.
+
 ### Brightness and the ambient light sensor (verified)
 
 `GET /api/display/brightness` → `{"value":"5"}` — a string, either `auto` or
