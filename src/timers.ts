@@ -19,6 +19,8 @@ export interface Snapshot {
   index: number;
   label: string;
   color: string;
+  /** LED blink colour for this timer; falls back to `color`. */
+  ledColor: string;
   phase: Phase;
   remainingMs: number;
   totalMs: number;
@@ -69,6 +71,7 @@ export class DualTimer {
       index: this.active,
       label: slot.config.label,
       color: slot.config.color,
+      ledColor: slot.config.ledColor ?? slot.config.color,
       phase: this.phase,
       remainingMs,
       totalMs,

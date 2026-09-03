@@ -121,6 +121,26 @@ and 132300 bytes, exactly 0.5 s and 1.5 s of 16-bit mono 44.1 kHz.
 **Lesson for this repo: never mark an output-producing endpoint verified on the
 strength of its status code.**
 
+### The lever as an app switch, and the device left alone (2026-09-03)
+
+With `behavior.activeSwitchPosition: "custom"`, verified by hand:
+
+| Step | Result |
+| --- | --- |
+| startup, lever on CUSTOM but not yet seen | widget hidden, screen handed back — panel showed the device app (`ours=0`) |
+| lever to APPS | stayed hidden, device app visible (383 px) |
+| **on APPS**: START pressed, dial clicked ×3, dial rotated both ways, BACK used to navigate the clock view | **zero events reached this app**; the device behaved exactly as it does when the timer is not running |
+| lever back to CUSTOM | `[input] switch -> custom (widget on)`, panel showed the timer (`ours=162`) |
+
+The middle row is the important one. Hiding the widget alone would have left
+presses quietly mutating timer state behind another app's UI. Input is dropped
+before it reaches the recogniser, so running this does not change how the Bar
+works when you are not using it.
+
+Also confirmed: two distinct expiry sounds are uploaded, one per timer —
+`chime.wav` (47628 bytes) and `chime-2.wav` (49392 bytes). Different lengths
+because they are genuinely different tones, not the same file twice.
+
 ### The switch position decides whether BACK disturbs the widget (2026-09-03)
 
 Same program, same build, identical probe run in two lever positions:

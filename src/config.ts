@@ -1,14 +1,36 @@
 import { readFileSync } from 'node:fs';
+import type { SwitchPosition } from './proto.ts';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export type ButtonName = 'ok' | 'back' | 'start';
 export type SoundMode = 'asset' | 'stock' | 'none';
 
+/** A tone in the synthesised chime. */
+export interface ToneConfig {
+  freq: number;
+  ms: number;
+  gain?: number;
+}
+
 export interface TimerConfig {
   label: string;
   seconds: number;
   color: string;
+  /**
+   * Colour to blink the status LED while this timer is the active one, so you
+   * can tell A from B without reading the panel. Defaults to `color`.
+   *
+   * The firmware only exposes a colour — the blink pattern is its own and
+   * cannot be configured.
+   */
+  ledColor?: string;
+  /**
+   * This timer's expiry sound, so A and B are audibly different. Either a file
+   * in `assets/`, or tones to synthesise. Defaults to a distinct built-in tone
+   * per slot.
+   */
+  sound?: { file?: string; tones?: ToneConfig[] };
 }
 
 export interface Config {
@@ -52,6 +74,19 @@ export interface Config {
      * device UI). 0 disables it.
      */
     reassertEveryMs: number;
+    /** Blink the active timer's LED colour while it runs, not just on expiry. */
+    ledWhileRunning: boolean;
+    /**
+     * Only show the widget when the physical lever is in this position, so the
+     * lever picks between the device's own apps and this timer.
+     *
+     * `null` (the default) means always show it, whatever the lever is doing.
+     *
+     * Caveat worth knowing: the lever position is only reported when it
+     * *changes* — no endpoint exposes it, checked. So on startup the position is
+     * unknown, and the widget stays hidden until the lever moves at least once.
+     */
+    activeSwitchPosition: SwitchPosition | null;
   };
   expiry: {
     flashSeconds: number;
@@ -97,6 +132,8 @@ const DEFAULTS: Config = {
     startPaused: true,
     maxEventsPerMessage: 8,
     reassertEveryMs: 2000,
+    ledWhileRunning: true,
+    activeSwitchPosition: null,
   },
   expiry: {
     flashSeconds: 10,
@@ -135,6 +172,19 @@ function validate(cfg: Config): void {
     assert(Number.isFinite(timer.seconds) && timer.seconds > 0, `timers[${i}].seconds must be > 0`);
     assert(typeof timer.label === 'string' && timer.label.length > 0, `timers[${i}].label is required`);
     assert(HEX_RGBA.test(timer.color), `timers[${i}].color must be #RRGGBBAA`);
+    if (timer.ledColor !== undefined) {
+      assert(HEX_RGBA.test(timer.ledColor), `timers[${i}].ledColor must be #RRGGBBAA`);
+    }
+    if (timer.sound?.tones !== undefined) {
+      assert(
+        Array.isArray(timer.sound.tones) && timer.sound.tones.length > 0,
+        `timers[${i}].sound.tones must be a non-empty array`,
+      );
+      for (const [j, tone] of timer.sound.tones.entries()) {
+        assert(tone.freq > 0, `timers[${i}].sound.tones[${j}].freq must be > 0`);
+        assert(tone.ms > 0, `timers[${i}].sound.tones[${j}].ms must be > 0`);
+      }
+    }
   }
   assert(
     cfg.app.priority >= 1 && cfg.app.priority <= 100,
@@ -159,6 +209,12 @@ function validate(cfg: Config): void {
   assert(cfg.gestures.coarseStepSeconds > 0, 'gestures.coarseStepSeconds must be > 0');
   assert(cfg.gestures.fineStepSeconds > 0, 'gestures.fineStepSeconds must be > 0');
   assert(cfg.gestures.maxSeconds > 0, 'gestures.maxSeconds must be > 0');
+  if (cfg.behavior.activeSwitchPosition !== null) {
+    assert(
+      ['busy', 'custom', 'off', 'apps', 'settings'].includes(cfg.behavior.activeSwitchPosition),
+      "behavior.activeSwitchPosition must be null or one of 'busy', 'custom', 'off', 'apps', 'settings'",
+    );
+  }
   assert(cfg.behavior.reassertEveryMs >= 0, 'behavior.reassertEveryMs must be >= 0 (0 disables it)');
   assert(cfg.behavior.maxEventsPerMessage >= 0, 'behavior.maxEventsPerMessage must be >= 0 (0 disables the guard)');
   assert(cfg.expiry.flashHz >= 0, 'expiry.flashHz must be >= 0 (0 holds DONE steady)');

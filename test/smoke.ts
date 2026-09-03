@@ -10,7 +10,7 @@ import { parseState } from '../src/proto.ts';
 import { decodeWav, detectFormat, ffmpegCommand, isWav, toDevicePcm } from '../src/audio.ts';
 import { DualTimer } from '../src/timers.ts';
 import { formatDuration, buildPayload } from '../src/render.ts';
-import { generateChime } from '../src/chime.ts';
+import { generateChime, tonesForSlot } from '../src/chime.ts';
 
 const CAPTURED = {
   startPress: 'EgZaBAoCCAI=',
@@ -264,12 +264,72 @@ for (const element of payload.elements) {
     assert.equal(cover.height, 16);
   }
 }
+
+// The element id set must be identical in EVERY phase, not just across the
+// blink -- a change forces a clear, and the device's own UI shows in the gap.
+{
+  const opts = { applicationName: 'dual_timer', priority: 95 };
+  const base = { index: 0, label: 'A', color: '#3BA7FFFF', ledColor: '#3BA7FFFF', totalMs: 60_000 };
+  const phases = [
+    { ...base, phase: 'idle' as const, remainingMs: 60_000, fraction: 1 },
+    { ...base, phase: 'running' as const, remainingMs: 30_000, fraction: 0.5 },
+    { ...base, phase: 'paused' as const, remainingMs: 30_000, fraction: 0.5 },
+    { ...base, phase: 'running' as const, remainingMs: 0, fraction: 0 }, // empty bar
+    { ...base, phase: 'expired' as const, remainingMs: 0, fraction: 0 },
+  ];
+  const sets = new Set<string>();
+  for (const snap of phases) {
+    for (const blinkOn of [true, false]) {
+      const p = buildPayload({ snapshot: snap, blinkOn }, opts);
+      sets.add(p.elements.map((e) => e.id).sort().join(','));
+      for (const el of p.elements) {
+        if (el.type === 'rectangle') {
+          assert.ok(el.width >= 1, `${el.id}: rectangles must never be zero-width`);
+        }
+      }
+    }
+  }
+  assert.equal(sets.size, 1, `element id set must never change; saw ${[...sets].join(' | ')}`);
+}
+
+// Per-timer LED colour: the active timer's colour identifies it without
+// reading the panel.
+{
+  const opts = { applicationName: 'dual_timer', priority: 95 };
+  const running = (ledColor: string) => buildPayload(
+    { snapshot: { index: 0, label: 'A', color: '#3BA7FFFF', ledColor, phase: 'running', remainingMs: 1, totalMs: 2, fraction: 0.5 }, blinkOn: true },
+    { ...opts, ledWhileRunning: true },
+  ).led_notification_color;
+  assert.equal(running('#3BA7FFFF'), '#3BA7FFFF');
+  assert.equal(running('#33D17AFF'), '#33D17AFF', 'timer B must blink its own colour');
+
+  // Off by config, and never while idle.
+  assert.equal(buildPayload(
+    { snapshot: { index: 0, label: 'A', color: '#3BA7FFFF', ledColor: '#3BA7FFFF', phase: 'running', remainingMs: 1, totalMs: 2, fraction: 0.5 }, blinkOn: true },
+    { ...opts, ledWhileRunning: false },
+  ).led_notification_color, undefined);
+  assert.equal(buildPayload(
+    { snapshot: { index: 0, label: 'A', color: '#3BA7FFFF', ledColor: '#3BA7FFFF', phase: 'idle', remainingMs: 2, totalMs: 2, fraction: 1 }, blinkOn: true },
+    { ...opts, ledWhileRunning: true },
+  ).led_notification_color, undefined, 'an idle timer must not blink the LED');
+}
 console.log('render: ok');
 
 // 7. Chime is well-formed 16-bit PCM.
 const chime = generateChime();
 assert.equal(chime.byteLength % 2, 0);
 assert.ok(chime.byteLength > 44100, 'chime should be roughly half a second of 44.1kHz mono');
+// A and B must sound different, or the whole point is lost.
+{
+  const a = tonesForSlot(0), b = tonesForSlot(1);
+  assert.notDeepEqual(a, b, 'timer A and B must have different tones');
+  assert.notEqual(a[0]!.freq, b[0]!.freq);
+  // Different contour, not just a transposition: A rises, B falls.
+  assert.ok(a[a.length - 1]!.freq > a[0]!.freq, 'slot A should rise');
+  assert.ok(b[b.length - 1]!.freq < b[0]!.freq, 'slot B should fall');
+  assert.notEqual(generateChime(a).byteLength && Buffer.from(generateChime(a)).toString('base64'),
+                  Buffer.from(generateChime(b)).toString('base64'), 'rendered audio must differ');
+}
 console.log('chime: ok');
 
 // 8. WAV conversion. Build real RIFF files in memory and check we land on

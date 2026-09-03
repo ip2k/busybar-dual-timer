@@ -4,14 +4,20 @@ import { resolve } from 'node:path';
 import { BusyBarClient, InputStream } from './api.ts';
 import { loadAudioForDevice } from './audio-file.ts';
 import { monotonicMs } from './clock.ts';
-import { generateChime } from './chime.ts';
-import { loadConfig, PROJECT_ROOT, type Config } from './config.ts';
+import { generateChime, tonesForSlot } from './chime.ts';
+import { loadConfig, PROJECT_ROOT, type Config, type ToneConfig } from './config.ts';
 import { GestureRecognizer, type Gesture } from './gestures.ts';
 import { buildPayload, signature, formatDuration } from './render.ts';
 import { DualTimer } from './timers.ts';
 import type { InputEvent } from './proto.ts';
 
 const TICK_MS = 200;
+
+/** `chime.wav` -> `chime-2.wav`, keeping the extension the device expects. */
+function prefixed(file: string, index: number): string {
+  const dot = file.lastIndexOf('.');
+  return dot > 0 ? `${file.slice(0, dot)}-${index + 1}${file.slice(dot)}` : `${file}-${index + 1}`;
+}
 
 function log(...args: unknown[]): void {
   console.log(new Date().toISOString(), ...args);
@@ -26,11 +32,15 @@ class DualTimerApp {
   private lastSignature = '';
   private lastElementIds = '';
   private expiryStartedAt: number | null = null;
-  private soundSource: { path?: string; stock_path?: string } | null = null;
+  /** One sound per timer slot, so A and B are audibly different. */
+  private soundSources: ({ path?: string; stock_path?: string } | null)[] = [];
   private soundsPlayed = 0;
   private lastSoundAt = 0;
   private drawing = false;
   private lastDrawAt = 0;
+  /** Last lever position seen. Null until it moves — no endpoint reports it. */
+  private switchPosition: string | null = null;
+  private cleared = false;
   private ticker: NodeJS.Timeout | null = null;
 
   private readonly config: Config;
@@ -59,6 +69,12 @@ class DualTimerApp {
 
     if (!this.config.behavior.startPaused) this.timer.toggle();
 
+    const gate = this.config.behavior.activeSwitchPosition;
+    if (gate !== null) {
+      log(`[display] waiting for the lever — the widget shows only on '${gate}'`);
+      log('[display] the position is only reported when it changes, so flip the lever to begin');
+    }
+
     this.stream.start();
     this.ticker = setInterval(() => void this.tick(), TICK_MS);
     await this.render(true);
@@ -86,45 +102,77 @@ class DualTimerApp {
 
   private async prepareSound(): Promise<void> {
     const { sound } = this.config.expiry;
+    this.soundSources = this.config.timers.map(() => null);
     if (sound.mode === 'none') return;
     if (sound.mode === 'stock') {
-      this.soundSource = { stock_path: sound.stockPath! };
+      this.soundSources = this.config.timers.map(() => ({ stock_path: sound.stockPath! }));
       return;
     }
 
-    const localPath = resolve(PROJECT_ROOT, 'assets', sound.file);
-    let data: Uint8Array;
-    if (existsSync(localPath)) {
+    // One asset per timer. Each gets its own filename so uploading B's chime
+    // cannot overwrite A's on the device.
+    for (const [index, timer] of this.config.timers.entries()) {
+      const file = timer.sound?.file ?? (index === 0 ? sound.file : prefixed(sound.file, index));
+      const data = this.soundDataFor(index, timer.sound?.file, timer.sound?.tones);
       try {
-        // Drop in any ordinary sound file; the device only plays headerless PCM,
-        // so convert rather than making people work that out themselves.
-        const converted = loadAudioForDevice(localPath);
-        data = converted.pcm;
-        log(`[sound] ${sound.file}: ${converted.note}`);
-        if (converted.info) {
-          const { sampleRate, channels, bitDepth, duration } = converted.info;
-          log(`[sound] source was ${sampleRate}Hz ${channels}ch ${bitDepth}-bit, ${duration.toFixed(2)}s`);
-        }
+        await this.client.uploadAsset(this.config.app.name, file, data);
+        this.soundSources[index] = { path: file };
+        log(`[sound] ${timer.label}: uploaded ${file} (${data.byteLength} bytes)`);
       } catch (error) {
-        log(`[sound] could not read ${sound.file}: ${(error as Error).message}`);
-        log('[sound] falling back to the built-in synthesised chime');
-        data = generateChime();
+        log(`[sound] ${timer.label}: upload failed, continuing without audio:`, (error as Error).message);
       }
-    } else {
-      data = generateChime();
-      log(`[sound] ${localPath} not found, using the built-in synthesised chime`);
-    }
-
-    try {
-      await this.client.uploadAsset(this.config.app.name, sound.file, data);
-      this.soundSource = { path: sound.file };
-      log(`[sound] uploaded ${sound.file} (${data.byteLength} bytes) to app '${this.config.app.name}'`);
-    } catch (error) {
-      log('[sound] upload failed, continuing without audio:', (error as Error).message);
     }
   }
 
+  /** Resolve one timer's audio: its own file, its own tones, or the slot default. */
+  private soundDataFor(index: number, file: string | undefined, tones: ToneConfig[] | undefined): Uint8Array {
+    const name = file ?? (index === 0 ? this.config.expiry.sound.file : undefined);
+    if (name) {
+      const localPath = resolve(PROJECT_ROOT, 'assets', name);
+      if (existsSync(localPath)) {
+        try {
+          // Drop in any ordinary sound file; the device only plays headerless
+          // PCM, so convert rather than making people work that out themselves.
+          const converted = loadAudioForDevice(localPath);
+          log(`[sound] ${name}: ${converted.note}`);
+          if (converted.info) {
+            const { sampleRate, channels, bitDepth, duration } = converted.info;
+            log(`[sound] source was ${sampleRate}Hz ${channels}ch ${bitDepth}-bit, ${duration.toFixed(2)}s`);
+          }
+          return converted.pcm;
+        } catch (error) {
+          log(`[sound] could not read ${name}: ${(error as Error).message}`);
+          log('[sound] falling back to a synthesised chime');
+        }
+      }
+    }
+    return generateChime(tones ?? tonesForSlot(index));
+  }
+
+  /**
+   * Should the widget be on screen right now?
+   *
+   * With `activeSwitchPosition` set, the lever chooses between the device's own
+   * apps and this timer. The position is only reported when it changes, so
+   * until we have seen it we stay hidden rather than covering whatever the
+   * device is showing — hiding is the recoverable mistake.
+   */
+  private get onScreen(): boolean {
+    const wanted = this.config.behavior.activeSwitchPosition;
+    if (wanted === null) return true;
+    return this.switchPosition === wanted;
+  }
+
   private onInput(event: InputEvent, atMs: number): void {
+    // Switch events are always processed — they are how we learn the lever moved.
+    if (event.kind !== 'switch' && !this.onScreen) {
+      // When the lever is elsewhere, this app is not running as far as the user
+      // is concerned, and its controls must be inert. Acting on presses here
+      // would quietly mutate timer state behind the device's own UI, and worse,
+      // would make the buttons feel broken while someone is using another app.
+      return;
+    }
+
     if (event.kind === 'button') {
       this.gestures.handle(event.button, event.action, atMs);
       return;
@@ -134,10 +182,17 @@ class DualTimerApp {
       return;
     }
     if (event.kind === 'switch') {
-      // Position changes mean a different system app took the screen; our next
-      // draw re-asserts the widget at its configured priority.
-      log(`[input] switch -> ${event.position}`);
+      const was = this.onScreen;
+      this.switchPosition = event.position;
+      const now = this.onScreen;
+      log(`[input] switch -> ${event.position}${was !== now ? (now ? ' (widget on)' : ' (widget off)') : ''}`);
+      // A position change also means a different system app may have taken the
+      // screen, so force the next draw rather than trusting the cached signature.
       this.lastSignature = '';
+      if (was && !now) {
+        this.gestures.dispose(); // drop any half-finished press
+        void this.hide();
+      }
     }
   }
 
@@ -186,14 +241,17 @@ class DualTimerApp {
     if (this.timer.currentPhase === 'expired' && this.expiryStartedAt !== null) {
       const elapsed = monotonicMs() - this.expiryStartedAt;
       const { sound } = this.config.expiry;
+      // The sound belongs to whichever timer expired, so A and B are
+      // distinguishable from the next room without looking.
+      const source = this.soundSources[this.timer.snapshot().index] ?? null;
       if (
-        this.soundSource &&
+        source &&
         this.soundsPlayed < sound.repeat &&
         monotonicMs() - this.lastSoundAt >= sound.repeatEveryMs
       ) {
         this.lastSoundAt = monotonicMs();
         this.soundsPlayed += 1;
-        this.client.playAudio(this.config.app.name, this.soundSource).catch((error) => {
+        this.client.playAudio(this.config.app.name, source).catch((error) => {
           log('[sound] playback failed:', (error as Error).message);
         });
       }
@@ -231,7 +289,29 @@ class DualTimerApp {
     return Math.floor(monotonicMs() / 500) % 2 === 0;
   }
 
+  /** Take our drawing down so the device's own app is visible again. */
+  private async hide(): Promise<void> {
+    if (this.cleared) return;
+    this.cleared = true;
+    this.lastSignature = '';
+    this.lastElementIds = '';
+    try {
+      await this.client.clear(this.config.app.name);
+      log('[display] handed the screen back to the device');
+    } catch (error) {
+      log('[display] could not clear:', (error as Error).message);
+    }
+  }
+
   private async render(force = false): Promise<void> {
+    if (!this.onScreen) {
+      await this.hide();
+      return;
+    }
+    if (this.cleared) {
+      this.cleared = false;
+      force = true;
+    }
     if (this.drawing) return;
     const payload = buildPayload(
       { snapshot: this.timer.snapshot(), blinkOn: this.blinkOn() },
@@ -239,6 +319,7 @@ class DualTimerApp {
         applicationName: this.config.app.name,
         priority: this.config.app.priority,
         ledColor: this.config.expiry.ledColor,
+        ledWhileRunning: this.config.behavior.ledWhileRunning,
       },
     );
     const sig = signature(payload);

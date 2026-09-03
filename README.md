@@ -169,6 +169,42 @@ The widget redraws itself either way (see `reassertEveryMs`), so APPS is
 survivable — it just flickers back to the device UI for a second or two. CUSTOM
 avoids it entirely.
 
+#### Optional: make the lever an on/off switch for the timer
+
+By default the widget is always on screen. Set:
+
+```json
+"behavior": { "activeSwitchPosition": "custom" }
+```
+
+and the lever becomes the app switcher: **CUSTOM shows the timer, every other
+position leaves the Bar completely alone.** Move away from CUSTOM and the widget
+is taken down, revealing whatever the device was showing; move back and it
+returns.
+
+**The controls go inert too.** With the lever elsewhere, START, the dial and
+BACK do nothing to this app — presses aren't just ignored on screen, they're
+never acted on. Verified on hardware: with the lever on APPS, pressing START,
+clicking the dial three times, rotating it, and using BACK to navigate the
+device's clock view produced **zero** events in this app, and the device behaved
+exactly as it does without the timer running. Running this should not change how
+your Bar works when you're not using it.
+
+Timers keep counting while hidden — you don't lose time by glancing at another
+app.
+
+**One caveat.** The lever position is only reported when it *changes*; no
+endpoint exposes the current position (checked `/api/status` and
+`/api/busy/snapshot`). So on startup the position is unknown, and the widget
+stays hidden until you move the lever at least once — even if it's already on
+CUSTOM. Hiding is the safe default: covering an app you're using would be worse
+than making you flick a switch. The log says so on startup:
+
+```
+[display] waiting for the lever — the widget shows only on 'custom'
+[display] the position is only reported when it changes, so flip the lever to begin
+```
+
 ---
 
 ## Configuration
@@ -187,6 +223,27 @@ only write what you want to change.
 
 Colours are `#RRGGBBAA` — eight digits, alpha included. The label is drawn in
 the top-left corner; short is better on a 72×16 panel.
+
+`ledColor` blinks the **status LED in the START button** while that timer runs,
+so you can tell A from B across the room without reading the panel. It defaults
+to the timer's own colour. Turn it off with `"behavior": { "ledWhileRunning":
+false }`, which limits the LED to expiry.
+
+> The firmware exposes a colour and nothing else — the blink *pattern* is the
+> device's own and cannot be configured. See
+> [What the LED can't do](#what-the-led-cant-do).
+
+Each timer can also have its **own expiry sound**, so you know which one
+finished without looking:
+
+```json
+{ "label": "A", "seconds": 1500, "color": "#3BA7FFFF",
+  "sound": { "tones": [ { "freq": 880, "ms": 110 }, { "freq": 1760, "ms": 320 } ] } }
+```
+
+Give it `"sound": { "file": "gong.mp3" }` to use a file from `assets/` instead.
+With neither, each slot gets a distinct built-in chime — A rises, B falls a
+fourth lower, so they differ in contour as well as pitch.
 
 These are starting values. Turning the dial changes a timer's length while the
 program runs, but does **not** rewrite this file — restart and you're back to
@@ -318,6 +375,31 @@ Anything drawing a persistent widget on this hardware needs to do this.
 exist**. It never returns the `404` its own spec documents. The only way to
 verify audio is for a person to listen to the Bar. Don't trust the status code —
 it cost this project a wrong "verified" entry.
+
+### What the LED can't do
+
+The status LED in the START button is controlled by exactly one field on a draw:
+`led_notification_color`, an `#RRGGBBAA` value. From the device's own spec:
+
+> Color to blink the status LED. If not specified, the LED will not blink.
+
+That is the entire surface. You choose **a colour**, and **whether it blinks at
+all**. You do not get:
+
+- a steady-on LED — the only "on" state is the firmware's own blink
+- the blink rate, duty cycle, or any pattern
+- independent control of the LED separately from a draw
+
+So **per-timer colours work** (that's `timers[].ledColor`), but patterns —
+including ideas like blinking A and B in Morse — can't be done properly. The
+best available approximation is to add and remove the colour across successive
+draws, which gives on/off segments no finer than the redraw interval, and each
+"on" is the firmware blinking rather than a clean lit stretch. Dots and dashes
+made of blinking are not really dots and dashes.
+
+If BUSY expose direct LED control later — likely with the on-device SDK — this
+becomes straightforward, and `timers[].ledColor` is the natural place to grow a
+`ledPattern` beside it.
 
 ### Robustness
 

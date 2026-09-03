@@ -5,17 +5,41 @@
  */
 const SAMPLE_RATE = 44100;
 
-interface Tone {
+export interface Tone {
   freq: number;
   ms: number;
   gain?: number;
 }
 
+/**
+ * A rising bell — A5, D6, A6.
+ */
 const DEFAULT_TONES: Tone[] = [
   { freq: 880, ms: 110 },
   { freq: 1174.66, ms: 110 },
   { freq: 1760, ms: 320, gain: 0.9 },
 ];
+
+/**
+ * A distinct chime per timer slot, so you can tell from the next room which one
+ * just finished without looking.
+ *
+ * Slot 0 rises; slot 1 falls and sits a fourth lower. Different contour and
+ * different register — pitch alone is easy to miss when you are not listening
+ * for it.
+ */
+const SLOT_TONES: Tone[][] = [
+  DEFAULT_TONES,
+  [
+    { freq: 1318.51, ms: 110 }, // E6
+    { freq: 987.77, ms: 110 }, // B5
+    { freq: 659.25, ms: 340, gain: 0.9 }, // E5
+  ],
+];
+
+export function tonesForSlot(index: number): Tone[] {
+  return SLOT_TONES[index] ?? DEFAULT_TONES;
+}
 
 export function generateChime(tones: Tone[] = DEFAULT_TONES): Uint8Array {
   const totalSamples = tones.reduce((sum, tone) => sum + Math.round((tone.ms / 1000) * SAMPLE_RATE), 0);

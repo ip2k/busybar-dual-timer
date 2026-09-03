@@ -31,73 +31,36 @@ function timeFont(text: string): 'large' | 'condensed' | 'normal' {
   return 'normal';
 }
 
-function normalElements(state: RenderState): DisplayElement[] {
+/**
+ * Fully transparent. Used to keep an element present but invisible.
+ *
+ * The element id set must not change between frames: `index.ts` clears the
+ * display whenever it does, and the firmware's own screen is visible in the gap
+ * between that clear and the next draw. Verified on hardware — alpha `00`
+ * renders as nothing at all, so a placeholder costs only a few bytes.
+ */
+const INVISIBLE = '#00000000';
+
+/**
+ * Every frame emits the same four elements in the same order, whatever the
+ * state. Unused ones go transparent rather than being omitted.
+ *
+ * `flash` is first so it sits behind the text.
+ */
+function elementsFor(state: RenderState): DisplayElement[] {
   const { snapshot, blinkOn } = state;
-  const text = formatDuration(snapshot.remainingMs);
+  const expired = snapshot.phase === 'expired';
   const paused = snapshot.phase === 'paused';
   const idle = snapshot.phase === 'idle';
-  const timeColor = paused && !blinkOn ? withAlpha(snapshot.color, DIM_ALPHA) : snapshot.color;
-  const barWidth = Math.max(0, Math.min(WIDTH, Math.round(WIDTH * snapshot.fraction)));
 
-  const elements: DisplayElement[] = [
-    {
-      id: 'label',
-      type: 'text',
-      x: 1,
-      y: 1,
-      align: 'top_left',
-      display: 'front',
-      text: snapshot.label,
-      font: 'tiny',
-      color: idle ? withAlpha(snapshot.color, '99') : snapshot.color,
-    },
-    {
-      id: 'time',
-      type: 'text',
-      x: 39,
-      y: 7,
-      align: 'center',
-      display: 'front',
-      text,
-      font: timeFont(text),
-      color: timeColor,
-    },
-  ];
+  const text = expired ? `${snapshot.label} DONE` : formatDuration(snapshot.remainingMs);
+  const barWidth = expired ? 0 : Math.max(0, Math.min(WIDTH, Math.round(WIDTH * snapshot.fraction)));
 
-  if (barWidth > 0) {
-    elements.push({
-      id: 'bar',
-      type: 'rectangle',
-      x: 0,
-      y: 15,
-      width: barWidth,
-      height: 1,
-      display: 'front',
-      fill: 'solid',
-      fill_colors: [withAlpha(snapshot.color, paused || idle ? '77' : 'FF')],
-      border_width: 0,
-    });
-  }
+  let timeColor: string;
+  if (expired) timeColor = blinkOn ? '#000000FF' : withAlpha(snapshot.color, '66');
+  else if (paused && !blinkOn) timeColor = withAlpha(snapshot.color, DIM_ALPHA);
+  else timeColor = snapshot.color;
 
-  return elements;
-}
-
-function expiredElements(state: RenderState): DisplayElement[] {
-  const { snapshot, blinkOn } = state;
-
-  // Both phases emit the SAME element ids, and the flash rectangle is always
-  // present — it just turns black instead of disappearing.
-  //
-  // This is load-bearing, not tidiness. `index.ts` clears before drawing
-  // whenever the set of element ids changes, and a clear leaves the panel
-  // showing whatever the firmware has underneath until the draw lands. At
-  // `flashHz` that gap opened several times a second, so the alarm strobed
-  // between "DONE" and the device's own clock/calendar screen instead of
-  // between "DONE" and black.
-  //
-  // Keeping the ids stable means no clear, no gap, and the black rectangle
-  // covers the device UI even if a redraw is slow.
-  const lit = blinkOn;
   return [
     {
       id: 'flash',
@@ -108,35 +71,64 @@ function expiredElements(state: RenderState): DisplayElement[] {
       height: HEIGHT,
       display: 'front',
       fill: 'solid',
-      fill_colors: [lit ? snapshot.color : '#000000FF'],
+      fill_colors: [expired ? (blinkOn ? snapshot.color : '#000000FF') : INVISIBLE],
       border_width: 0,
+    },
+    {
+      id: 'bar',
+      type: 'rectangle',
+      x: 0,
+      y: HEIGHT - 1,
+      // Never zero-width: keep the element real and hide it with alpha instead.
+      width: Math.max(1, barWidth),
+      height: 1,
+      display: 'front',
+      fill: 'solid',
+      fill_colors: [barWidth > 0 ? withAlpha(snapshot.color, paused || idle ? '77' : 'FF') : INVISIBLE],
+      border_width: 0,
+    },
+    {
+      id: 'label',
+      type: 'text',
+      x: 1,
+      y: 1,
+      align: 'top_left',
+      display: 'front',
+      text: snapshot.label,
+      font: 'tiny',
+      color: expired ? INVISIBLE : idle ? withAlpha(snapshot.color, '99') : snapshot.color,
     },
     {
       id: 'time',
       type: 'text',
-      x: 36,
-      y: 8,
+      x: expired ? 36 : 39,
+      y: expired ? 8 : 7,
       align: 'center',
       display: 'front',
-      text: `${snapshot.label} DONE`,
-      font: 'normal',
-      color: lit ? '#000000FF' : withAlpha(snapshot.color, '66'),
+      text,
+      font: expired ? 'normal' : timeFont(text),
+      color: timeColor,
     },
   ];
 }
 
 export function buildPayload(
   state: RenderState,
-  options: { applicationName: string; priority: number; ledColor?: string },
+  options: { applicationName: string; priority: number; ledColor?: string; ledWhileRunning?: boolean },
 ): DrawPayload {
-  const expired = state.snapshot.phase === 'expired';
-  const elements = expired ? expiredElements(state) : normalElements(state);
+  const { phase, ledColor } = state.snapshot;
+  const expired = phase === 'expired';
   const payload: DrawPayload = {
     application_name: options.applicationName,
     priority: options.priority,
-    elements,
+    elements: elementsFor(state),
   };
-  if (expired && options.ledColor) payload.led_notification_color = options.ledColor;
+
+  // The firmware owns the blink pattern; all we choose is the colour, and
+  // whether it blinks at all. Expiry uses the alarm colour, a running timer uses
+  // its own so A and B are tellable apart without reading the panel.
+  if (expired) payload.led_notification_color = options.ledColor ?? ledColor;
+  else if (options.ledWhileRunning && phase === 'running') payload.led_notification_color = ledColor;
   return payload;
 }
 

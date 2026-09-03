@@ -132,6 +132,36 @@ By default the expiry does not blink at all: `expiry.flashHz` is `0`, holding
 across a desk is more irritating than informative. Set it above zero to bring
 the flash back.
 
+### The lever as an app switch
+
+`behavior.activeSwitchPosition` makes the physical lever choose between the
+device's own apps and this timer. It is off by default; set to `"custom"` the
+widget appears only in that position.
+
+Two halves, and the second matters more than it looks:
+
+1. **The display is taken down** when the lever moves away — an explicit clear,
+   not just skipped drawing, so the device's own app is visible again.
+2. **Input is ignored.** Button and dial events are dropped before they reach
+   the recogniser. Merely hiding the widget would leave presses quietly mutating
+   timer state behind another app's UI, and the timer would jump inexplicably
+   when you came back. Running this must not change how the Bar behaves when you
+   are not using it.
+
+Switch events themselves are always processed — they are how we learn the lever
+moved. A half-finished press is discarded when the lever leaves, so a press
+begun in one position cannot complete in another.
+
+Timers keep counting while hidden. Hiding is about the screen, not the clock.
+
+**The awkward part:** the lever position is only reported when it *changes*.
+Nothing exposes the current position — `/api/status` and `/api/busy/snapshot`
+were both checked. So at startup the position is unknown, and the widget stays
+hidden until the lever moves once, even if it is already in the right place.
+Hidden is the correct default for an unknown state: covering an app someone is
+using is worse than making them flick a switch, and the startup log says exactly
+what it is waiting for.
+
 ### Behaviour on a laggy or spotty network
 
 The countdown itself never touches the network. `timers.ts` is driven by a local

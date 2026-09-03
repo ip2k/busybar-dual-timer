@@ -10,8 +10,8 @@
   },
 
   "timers": [
-    { "label": "A", "seconds": 1500, "color": "#3BA7FFFF" },
-    { "label": "B", "seconds": 300,  "color": "#33D17AFF" }
+    { "label": "A", "seconds": 1500, "color": "#3BA7FFFF", "ledColor": "#3BA7FFFF" },
+    { "label": "B", "seconds": 300,  "color": "#33D17AFF", "ledColor": "#33D17AFF" }
   ],
 
   "gestures": {
@@ -30,7 +30,9 @@
     "streamFrames": true,
     "startPaused": true,
     "maxEventsPerMessage": 8,
-    "reassertEveryMs": 2000
+    "reassertEveryMs": 2000,
+    "ledWhileRunning": true,
+    "activeSwitchPosition": null
   },
 
   "expiry": {
