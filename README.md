@@ -408,8 +408,14 @@ dots and dashes would be built out of flashing. Not worth faking.
 | `transitions` | fire once when a timer starts, is switched, or expires — three clean blinks, then quiet |
 | `off` | never touch the LED |
 
-`running` is what you see by default, and it's worth knowing it's a *re-trigger*
-of the three-blink animation rather than a genuine continuous blink.
+`running` is the default, and it's worth knowing it's a *re-trigger* of the
+three-blink animation rather than a genuine continuous blink. `transitions` is
+quieter and arguably truer to what the preset is for — confirmed on hardware:
+starting a timer gives a short burst of blinks in that timer's colour, then
+nothing until the next event.
+
+**Expiry always uses `expiry.ledColor`** (red by default), not the timer's
+colour — an alarm should read as an alarm whichever timer fired it.
 
 If BUSY expose the other presets later — likely with the on-device SDK, where
 `status_lights_run_preset` is a direct call — patterns become straightforward,

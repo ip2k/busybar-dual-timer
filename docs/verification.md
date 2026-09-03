@@ -121,6 +121,23 @@ and 132300 bytes, exactly 0.5 s and 1.5 s of 16-bit mono 44.1 kHz.
 **Lesson for this repo: never mark an output-producing endpoint verified on the
 strength of its status code.**
 
+### `ledMode: transitions` on hardware (2026-09-03)
+
+Observed by watching the device:
+
+- **Timer B started → the green LED flashed a few times, then stopped.** That is
+  the firmware's `Notification` preset doing exactly what its source says: three
+  blinks at maximum brightness, fired once per event rather than re-triggered by
+  every redraw.
+- **Expiry showed "B DONE" with a red LED.** Expiry deliberately uses
+  `expiry.ledColor` (default `#FF3B30FF`) rather than the timer's own colour, so
+  an alarm reads as an alarm whichever timer fired it. The per-timer colours are
+  for telling A from B *while running*.
+
+Together with the earlier `running` test — flashing light blue for A, flashing
+neon green for B — both LED modes are now confirmed on hardware, and the
+three-blink behaviour matches what the firmware source says it should be.
+
 ### Per-timer LED colours and distinct chimes, by eye and ear (2026-09-03)
 
 Both confirmed on hardware by a person watching and listening.
