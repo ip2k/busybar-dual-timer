@@ -393,6 +393,56 @@ No code changes between them beyond the base URL.
   those instead of rendering our own display was never explored and might give
   a more native-feeling result.
 
+## The official ecosystem, and why this project doesn't use it
+
+BUSY publish more than the docs suggest. As of September 2026, `busy-app` has
+nine public repos; the ones that matter here:
+
+| Repo | What it is |
+| --- | --- |
+| [`busybar-firmware`](https://github.com/busy-app/busybar-firmware) | **the device firmware itself**, in C — 138 stars, actively pushed |
+| [`busylib-ts`](https://github.com/busy-app/busylib-ts) | TypeScript client, `@busy-app/busy-lib`, MIT |
+| [`busylib-py`](https://github.com/busy-app/busylib-py) | Python client |
+| [`busylib-kmp`](https://github.com/busy-app/busylib-kmp) | Kotlin Multiplatform client |
+| [`busybar-protobuf`](https://github.com/busy-app/busybar-protobuf) | the protobuf schemas |
+| [`busy-hacs`](https://github.com/busy-app/busy-hacs) | Home Assistant integration |
+
+### `busylib-ts` covers most of what this project hand-rolled
+
+`@busy-app/busy-lib` (MIT, ESM + CJS, typed) provides three things:
+
+- **`BusyBar`** — an HTTP client across every namespace: system, display, audio,
+  wifi, storage, settings, ble, input, smart home, account, assets, time, update.
+- **`StateStream`** — the status WebSocket, **with protobuf decoding**.
+- **`ScreenRenderer`** — a WebGL2 renderer for the LED panel.
+
+The first two overlap almost exactly with `api.ts` and `proto.ts` here. Its
+published docs describe outbound state updates but do not explicitly confirm
+that decoded *input* events — button, encoder, switch — are exposed, which is
+the part this project depends on most, so that would need checking before any
+port.
+
+**This project deliberately uses none of it.** The zero-dependency rule is a
+choice, not an oversight: the whole protobuf need was ~150 lines, and owning the
+decoder is what let this repo pin behaviour like the empty-`ButtonEvent` trap
+with tests against real captured frames. If you would rather not maintain that,
+`busylib-ts` is the sensible starting point and is likely the right base for an
+on-device port.
+
+### The firmware is open source, which beats guessing
+
+Nearly everything in this document was established by experiment, because the
+published docs were incomplete. `busybar-firmware` means several open questions
+could instead be *read*:
+
+- what `led_notification_color` actually drives, and whether the blink pattern
+  is reachable at all (this decides whether LED patterns are possible)
+- why BACK's behaviour depends on the switch position
+- the exact semantics of `{"enable": false}` on the status WebSocket
+- whether the input backlog seen once on connect is intentional
+
+Worth doing before adding more experimentally-derived notes here.
+
 ## Libraries
 
 - Python: `pip install busylib` — https://github.com/busy-app/busylib-py

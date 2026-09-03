@@ -390,6 +390,10 @@ all**. You do not get:
 - the blink rate, duty cycle, or any pattern
 - independent control of the LED separately from a draw
 
+Confirmed on hardware: with `ledColor` set per timer, the LED showed **flashing
+light blue** while A ran and **flashing neon green** while B ran. The colour is
+ours; the flashing is not.
+
 So **per-timer colours work** (that's `timers[].ledColor`), but patterns —
 including ideas like blinking A and B in Morse — can't be done properly. The
 best available approximation is to add and remove the colour across successive
@@ -482,9 +486,14 @@ what has actually been proven on hardware, and what hasn't.
 - [HTTP API guide](https://docs.busy.app/bar/dev/http-api) — enabling it, tokens, connection types
 - [HTTP API reference](https://api.busy.app/busybar/docs) — interactive
 - [Official libraries](https://docs.busy.app/bar/dev/libraries) —
-  [Python](https://github.com/busy-app/busylib-py) and
-  [TypeScript](https://github.com/busy-app/busylib-ts)
+  [TypeScript](https://github.com/busy-app/busylib-ts) (`@busy-app/busy-lib`),
+  [Python](https://github.com/busy-app/busylib-py),
+  [Kotlin](https://github.com/busy-app/busylib-kmp).
+  **This project deliberately uses none of them** — see
+  [the ecosystem notes](docs/busy-bar-api.md#the-official-ecosystem-and-why-this-project-doesnt-use-it)
+  for what they offer and why
 - [Protobuf schemas](https://github.com/busy-app/busybar-protobuf)
+- [Device firmware source](https://github.com/busy-app/busybar-firmware) — open source, and the definitive answer to most hardware questions
 - Your own Bar serves its spec at `http://<bar>/openapi.yaml` and rendered docs
   at `http://<bar>/docs/`
 

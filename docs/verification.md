@@ -121,6 +121,29 @@ and 132300 bytes, exactly 0.5 s and 1.5 s of 16-bit mono 44.1 kHz.
 **Lesson for this repo: never mark an output-producing endpoint verified on the
 strength of its status code.**
 
+### Per-timer LED colours and distinct chimes, by eye and ear (2026-09-03)
+
+Both confirmed on hardware by a person watching and listening.
+
+**LED.** `timers[].ledColor` set to `#0080FFFF` for A and `#00FF40FF` for B, run
+through paused/running phases:
+
+| Phase | Observed |
+| --- | --- |
+| A paused | LED off |
+| A running | **flashing light blue** |
+| B running | **flashing neon green** |
+
+So the colour is ours to choose, per timer, and it tracks the active timer.
+
+**The LED flashes; it cannot be held steady.** That is the firmware's own
+pattern and there is no field to change it — which settles the Morse idea. Dots
+and dashes would have to be built from bursts of flashing, no finer than our
+redraw interval. Documented as a limitation rather than half-built.
+
+**Chimes.** A's and B's expiry sounds were confirmed audibly different — A rises,
+B falls a fourth lower.
+
 ### The lever as an app switch, and the device left alone (2026-09-03)
 
 With `behavior.activeSwitchPosition: "custom"`, verified by hand:
