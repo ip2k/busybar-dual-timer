@@ -125,10 +125,12 @@ strength of its status code.**
 
 Observed by watching the device:
 
-- **Timer B started → the green LED flashed a few times, then stopped.** That is
-  the firmware's `Notification` preset doing exactly what its source says: three
-  blinks at maximum brightness, fired once per event rather than re-triggered by
-  every redraw.
+- **Timer B started → the green LED flashed a few times, then stopped**, and was
+  **unlit for the rest of the time** — confirmed across the 14-second quiet
+  stretches between events. That is the firmware's `Notification` preset doing
+  exactly what its source says: three blinks at maximum brightness, fired once
+  per event rather than re-triggered by every redraw. The silence in between is
+  the whole point of the mode, and is what distinguishes it from `running`.
 - **Expiry showed "B DONE" with a red LED.** Expiry deliberately uses
   `expiry.ledColor` (default `#FF3B30FF`) rather than the timer's own colour, so
   an alarm reads as an alarm whichever timer fired it. The per-timer colours are
