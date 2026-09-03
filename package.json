@@ -2,7 +2,7 @@
   "name": "busy-dual-timer",
   "version": "1.0.0",
   "private": true,
-  "description": "Two-timer widget for the BUSY Bar. One button: tap = start/pause, hold = switch A/B, triple-tap = reset.",
+  "description": "Two configurable countdowns on a BUSY Bar. START starts and pauses, the dial switches A/B, double-click resets, and turning it sets the time.",
   "type": "module",
   "engines": {
     "node": ">=22"

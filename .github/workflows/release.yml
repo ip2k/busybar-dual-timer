@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to release
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      # A ready-to-run bundle for people who would rather not install a
+      # toolchain: compiled JS plus an example config. Node 22+ is the only
+      # requirement, since this project has no runtime dependencies.
+      - name: Assemble the bundle
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          OUT="busy-dual-timer-${TAG}"
+          mkdir -p "$OUT"
+          cp -r dist "$OUT"/
+          cp package.json config.example.json README.md LICENSE busy-dual-timer.service "$OUT"/
+          cp -r docs "$OUT"/
+          tar -czf "${OUT}.tar.gz" "$OUT"
+          echo "ASSET=${OUT}.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          gh release create "$TAG" "$ASSET" \
+            --title "$TAG" \
+            --notes "Run it with Node 22+: unpack, copy config.example.json to config.json, set your Bar's address, then \`node dist/index.js\`. No runtime dependencies."

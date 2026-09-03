@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 is the floor declared in package.json engines; 24 catches anything
+        # that breaks on a newer runtime. Type stripping is experimental on 22
+        # and built in from 23, so both paths are worth exercising.
+        node: ['22', '24']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # The smoke test needs no hardware: it covers the protobuf decoder against
+      # real captured device frames, the gesture mapping, timer banking, layout
+      # bounds and audio conversion.
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Confirm the build actually produced something runnable
+        run: node -e "require('node:fs').accessSync('dist/index.js')"

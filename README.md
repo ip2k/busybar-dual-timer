@@ -1,5 +1,7 @@
 # busy-dual-timer
 
+[![CI](https://github.com/ip2k/busy-dual-timer/actions/workflows/ci.yml/badge.svg)](https://github.com/ip2k/busy-dual-timer/actions/workflows/ci.yml)
+
 Two countdowns on a [BUSY Bar](https://busy.bar), switched with the dial.
 
 Timer **A** for work, timer **B** for a break. Click the dial to switch between
@@ -540,6 +542,23 @@ npm run build      # -> dist/
 makes the offline test suite meaningful — it covers the protobuf decoder against
 real captured frames, the gesture mapping, timer banking, layout bounds and
 audio conversion, all with no hardware.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs typecheck, the smoke test and a build on Node 22
+and 24 for every push and pull request. The test suite needs no hardware — it
+covers the protobuf decoder against real captured device frames, the gesture
+mapping, timer banking, layout bounds and audio conversion — so CI is a genuine
+check rather than a formality.
+
+`.github/workflows/release.yml` runs on a `v*` tag and attaches a ready-to-run
+bundle to the GitHub release: compiled JS, an example config, the service file
+and the docs. Since there are no runtime dependencies, anyone with Node 22+ can
+unpack it and run `node dist/index.js` without a toolchain.
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
 
 **[docs/architecture.md](docs/architecture.md)** explains why each piece is
 shaped the way it is. **[docs/verification.md](docs/verification.md)** records
