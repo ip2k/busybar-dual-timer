@@ -118,23 +118,29 @@ GitHub releases. To enable it, create a **granular automation token** on npm
 with publish rights to this package and add it as `NPM_TOKEN` under
 Settings → Secrets and variables → Actions.
 
-**The token has to be able to publish without a one-time password.** CI cannot
-answer an OTP prompt, so a token that triggers 2FA fails with `EOTP` — after
-signing provenance, which makes it look like it nearly worked. Any of these
-avoid it:
+This project uses **npm trusted publishing (OIDC)**. The registry trusts this
+repository and the `Release` workflow directly, so there is no token stored
+anywhere — nothing to rotate, nothing to leak, and no 2FA prompt for CI to fail
+on. Provenance comes with it, so npm shows a verifiable link to the exact commit
+and run that built each version.
 
-- **Trusted publishing (OIDC)** — configure the package on npmjs.com to trust
-  this repository and workflow. No token or secret at all, which is the best
-  answer if it is available to you.
-- A **granular access token**, with the account's 2FA set to *authorization
-  only* rather than *authorization and writes*.
-- A **classic automation token**, which bypasses 2FA by design but cannot be
-  scoped to a single package.
+Two consequences worth knowing:
 
-npm publish runs *before* the GitHub release is created, so a failure here stops
-the run rather than leaving a release advertising a version npm does not have.
-The tag is pushed earlier, so a failed publish still leaves the tag behind —
-delete it, or move on to the next patch.
+- The publish step is gated on the repository name, not on a secret. A fork
+  runs the whole pipeline and simply skips publishing.
+- Trusted publishing needs npm 11.5.1 or newer, which Node 22 does not ship, so
+  the workflow upgrades npm before publishing.
+
+If you ever fall back to a token, it has to publish without a one-time
+password: CI cannot answer an OTP prompt, and it fails with `EOTP` *after*
+signing provenance, which makes it look like it nearly worked. A granular token
+needs the account's 2FA set to *authorization only*; a classic automation token
+bypasses 2FA but cannot be scoped to one package.
+
+npm publish runs *before* the GitHub release is created, so a failure stops the
+run rather than leaving a release advertising a version npm does not have. The
+tag is pushed earlier, so a failed publish can leave a tag behind — delete it
+with `gh release delete <tag> --cleanup-tag`, or move on to the next patch.
 
 Publishing to npm is close to permanent: unpublishing is restricted after 72
 hours and the name stays burned. GitHub releases can be deleted freely.

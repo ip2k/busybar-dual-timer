@@ -21,10 +21,6 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    # Job-level so the `if:` guards below can actually see it. A step's own env
-    # is not in scope for its own `if:`.
-    env:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -35,6 +31,10 @@ jobs:
           node-version: '22'
           cache: npm
           registry-url: https://registry.npmjs.org
+
+      # Trusted publishing (OIDC) needs a recent npm; Node 22 ships an older one.
+      - name: Use an npm that supports trusted publishing
+        run: npm install -g npm@latest
 
       - run: npm ci
 
@@ -103,19 +103,19 @@ jobs:
           fi
           echo "bundle starts, --help and --version work, and it fails only on the network"
 
-      # Publishing is skipped rather than failed when no token is configured, so
-      # the GitHub release still goes out on a repo that has not opted into npm.
+      # Published via npm trusted publishing (OIDC): the registry trusts this
+      # repository and workflow directly, so there is no token to store, rotate
+      # or leak, and no 2FA prompt for CI to fail on. Provenance comes with it.
+      #
+      # Gated on the repository rather than on a secret, so a fork runs
+      # everything else and simply does not publish.
       - name: Publish to npm
-        if: ${{ env.NPM_TOKEN != '' }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        # --provenance here rather than in publishConfig: it needs a supported CI
-        # provider, so putting it in package.json makes local publishes fail.
+        if: ${{ github.repository == 'ip2k/busybar-dual-timer' }}
         run: npm publish --provenance
 
       - name: Note if npm was skipped
-        if: ${{ env.NPM_TOKEN == '' }}
-        run: echo "::warning::NPM_TOKEN is not set, so npm publish was skipped. The GitHub release was still created."
+        if: ${{ github.repository != 'ip2k/busybar-dual-timer' }}
+        run: echo "::warning::not the canonical repository, so npm publish was skipped. The GitHub release was still created."
 
       - name: Publish the GitHub release
         env:

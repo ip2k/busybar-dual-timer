@@ -80,6 +80,9 @@ could arrive from somewhere else:
 ## Supply chain
 
 - Releases are built and published by GitHub Actions, never from a laptop.
+- npm publishing uses **trusted publishing (OIDC)**: the registry trusts this
+  repository and workflow directly, so no npm credential is stored in the
+  repository at all. There is no token to leak or rotate.
 - The npm package is published with **provenance**, so npm shows a verifiable
   link to the exact commit and workflow run that produced it.
 - Workflows use only `actions/checkout` and `actions/setup-node`, plus the `gh`
