@@ -28,6 +28,7 @@
   },
   "files": [
     "dist",
+    "!dist/*.map",
     "config.example.json",
     "README.md",
     "LICENSE"

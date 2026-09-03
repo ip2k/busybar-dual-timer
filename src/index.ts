@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { BusyBarClient, InputStream } from './api.ts';
+import { BusyBarClient, InputStream, safeText } from './api.ts';
 import { loadAudioForDevice } from './audio-file.ts';
 import { monotonicMs } from './clock.ts';
 import { generateChime, tonesForSlot } from './chime.ts';
@@ -84,7 +84,7 @@ class DualTimerApp {
 
   async start(): Promise<void> {
     const version = await this.client.version();
-    log(`[bar] ${this.config.device.host} firmware API ${version.api_semver ?? 'unknown'}`);
+    log(`[bar] ${this.config.device.host} firmware API ${safeText(version.api_semver ?? 'unknown', 40)}`);
 
     await this.prepareSound();
     await this.applyBrightness();
@@ -443,7 +443,8 @@ class DualTimerApp {
     // happened, and a paused timer's signature never changes, so without a
     // periodic re-assert the widget would stay off screen indefinitely.
     // Redrawing at priority 95 reclaims it.
-    const stale = monotonicMs() - this.lastDrawAt >= this.config.behavior.reassertEveryMs;
+    const every = this.config.behavior.reassertEveryMs;
+    const stale = every > 0 && monotonicMs() - this.lastDrawAt >= every; // 0 disables the reassert
     if (!force && !stale && sig === this.lastSignature) return;
 
     // Element sets are keyed by id; when the set itself changes (bar appears,
@@ -520,7 +521,8 @@ if (flag('--init')) {
     process.exit(1);
   }
   mkdirSync(resolve(process.cwd(), 'assets'), { recursive: true });
-  writeFileSync(target, exampleConfig());
+  // Owner-only: this file is where the API token goes.
+  writeFileSync(target, exampleConfig(), { mode: 0o600 });
   console.log(`Wrote ${target}`);
   console.log("Set device.host to your Bar's address, then run busybar-dual-timer.");
   process.exit(0);
@@ -547,6 +549,7 @@ log(
     ? `[config] ${loaded.configPath}`
     : '[config] no config file found, using built-in defaults',
 );
+for (const key of loaded.unknownKeys) log(`[config] unknown key "${key}" is ignored — check the spelling`);
 const app = new DualTimerApp(loaded);
 
 let shuttingDown = false;

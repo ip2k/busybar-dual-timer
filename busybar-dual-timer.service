@@ -19,5 +19,35 @@ Environment=NODE_ENV=production
 StandardOutput=journal
 StandardError=journal
 
+# Sandbox. At runtime this program only reads its own directory, talks TCP to
+# one device, and optionally runs ffmpeg — so it gets nothing else. The
+# filesystem is read-only (it writes nothing once started; `--init` is a
+# one-off you run by hand), home directories are invisible, and it cannot gain
+# privileges, load modules, or touch devices, kernel tunables or namespaces.
+#
+# If WorkingDirectory lives under /home, replace ProtectHome=yes with
+# ProtectHome=read-only. Do not add MemoryDenyWriteExecute: Node's JIT needs
+# pages that are both writable and executable.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+UMask=0077
+
 [Install]
 WantedBy=multi-user.target

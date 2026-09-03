@@ -22,6 +22,12 @@ There is no telemetry, no update check, and no third-party endpoint. You can
 confirm this in `src/api.ts` — those are the only two call sites in the
 codebase.
 
+**It refuses HTTP redirects.** The Bar never redirects, and following one
+would send the token header and the request body to whatever host the
+response named — on plain HTTP, that is anyone on the path, not only the
+device. `fetch` runs with `redirect: 'error'`, so a redirect is a failed
+request, never a new destination. There is a test for it.
+
 **It has zero runtime dependencies.** Nothing is pulled in at install time, so
 there is no transitive package surface. `npm audit` reports nothing because
 there is nothing to report.
@@ -50,7 +56,12 @@ request.
   credential file — `config.json` is gitignored here, and the published npm
   package and release tarballs contain only `config.example.json`.
 - **It is never logged.** The token is read into a header and never printed,
-  including in error messages.
+  including in error messages. Strings that come *from* the device — error
+  bodies, its version — are stripped of control characters and capped before
+  they reach a log line, so the Bar cannot write escape sequences into your
+  terminal or journal either.
+- **`--init` writes `config.json` owner-only (mode 0600)**, since that is
+  where the token goes.
 - **It travels in cleartext on your LAN.** The Bar's local API is plain HTTP,
   not HTTPS — that is the device's design, not a choice this program makes. On
   a network you don't trust, prefer the USB connection (`10.0.4.20`), which
@@ -67,15 +78,25 @@ request.
 `config.json` is your file, so it is trusted — but not blindly, since a config
 could arrive from somewhere else:
 
-- **Asset filenames must be bare filenames.** `expiry.sound.file` and
+- **Asset filenames must be plain filenames** — letters, digits, dot, dash and
+  underscore, not starting with a dot or dash. `expiry.sound.file` and
   `timers[].sound.file` are joined onto a directory and the result is read and
   uploaded to the Bar. Without a check, `../../../../etc/passwd` or an absolute
-  path would escape and send that file's contents to the device. Paths are
-  rejected, and there is a test for it.
+  path would escape and send that file's contents to the device. The name is
+  also printed inside a shell command for you to copy when ffmpeg is missing,
+  which is why quotes and `$` are refused as well. There is a test for it.
+- **Sound files are bounded.** At most 8 MB on disk and 30 seconds of audio,
+  with a sample rate between 8 kHz and 192 kHz. The WAV header is untrusted
+  input that sizes memory allocations: a 20 KB file claiming a 1 Hz sample
+  rate used to expand into 1.7 GB of PCM. ffmpeg is run with `-t 30` for the
+  same reason.
 - **`stockPath` must match `shared/<name>`**, the shape the firmware documents,
   rather than being passed through to arbitrary device paths.
-- Everything else is range- and type-checked at load, and the program exits
-  rather than starting with a config it doesn't understand.
+- **Every value is type-checked, not just range-checked.** A string where a
+  number belongs is an error, not a coercion, and the host must look like
+  `host` or `host:port`. Unknown keys are reported at startup so a typo cannot
+  silently do nothing.
+- The program exits rather than starting with a config it doesn't understand.
 
 ## Supply chain
 
@@ -85,8 +106,12 @@ could arrive from somewhere else:
   repository at all. There is no token to leak or rotate.
 - The npm package is published with **provenance**, so npm shows a verifiable
   link to the exact commit and workflow run that produced it.
-- Workflows use only `actions/checkout` and `actions/setup-node`, plus the `gh`
-  CLI preinstalled on runners. No third-party actions.
+- Workflows use only `actions/checkout` and `actions/setup-node`, pinned to
+  commit SHAs, plus the `gh` CLI preinstalled on runners. No third-party
+  actions.
 - CI runs with a read-only token. Only the release job can write, and it needs
   `contents: write` to push a tag and `id-token: write` for provenance.
+- Nothing from the triggering event is expanded into a shell script. Tag names
+  and dispatch inputs reach the release job through environment variables and
+  must match `vX.Y.Z` / `patch|minor|major|X.Y.Z` before anything runs.
 - Release artifacts ship with a `.sha256`.

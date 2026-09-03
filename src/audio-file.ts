@@ -1,9 +1,11 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 
 import {
   detectFormat,
   describeUnsupported,
+  MAX_SOUND_BYTES,
+  MAX_SOUND_SECONDS,
   toDevicePcm,
   type AudioFormat,
   type ConvertedAudio,
@@ -29,10 +31,12 @@ export function hasFfmpeg(): boolean {
  * exactly what the firmware wants, with no second conversion step.
  */
 function convertWithFfmpeg(path: string): Uint8Array {
+  // `-t` caps the decoded length at the source, so a three-minute track costs
+  // thirty seconds of decoding rather than being rejected after the fact.
   const result = spawnSync(
     'ffmpeg',
-    ['-v', 'error', '-i', path, '-f', 's16le', '-acodec', 'pcm_s16le', '-ac', '1', '-ar', String(TARGET_RATE), '-'],
-    { maxBuffer: 64 * 1024 * 1024 },
+    ['-v', 'error', '-i', path, '-t', String(MAX_SOUND_SECONDS), '-f', 's16le', '-acodec', 'pcm_s16le', '-ac', '1', '-ar', String(TARGET_RATE), '-'],
+    { maxBuffer: 16 * 1024 * 1024 },
   );
   if (result.error) throw new Error(`could not run ffmpeg: ${result.error.message}`);
   if (result.status !== 0) {
@@ -53,6 +57,14 @@ function convertWithFfmpeg(path: string): Uint8Array {
  * ffmpeg if it is installed, and otherwise fail with the exact command to run.
  */
 export function loadAudioForDevice(path: string): ConvertedAudio {
+  // Checked before the read: the file is loaded whole, and a raw file is
+  // uploaded whole, so the size is the first thing to disbelieve.
+  const size = statSync(path).size;
+  if (size > MAX_SOUND_BYTES) {
+    throw new Error(
+      `${(size / 1048576).toFixed(1)} MB is too big for a chime (at most ${MAX_SOUND_BYTES / 1048576} MB) — trim it`,
+    );
+  }
   const bytes = new Uint8Array(readFileSync(path));
   const format: AudioFormat = detectFormat(bytes);
 

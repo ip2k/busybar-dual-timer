@@ -112,12 +112,6 @@ prefers that.
 
 #### npm publishing
 
-Step 7 is skipped, with a warning rather than a failure, unless an `NPM_TOKEN`
-repository secret exists — so a fork without npm access still gets working
-GitHub releases. To enable it, create a **granular automation token** on npm
-with publish rights to this package and add it as `NPM_TOKEN` under
-Settings → Secrets and variables → Actions.
-
 This project uses **npm trusted publishing (OIDC)**. The registry trusts this
 repository and the `Release` workflow directly, so there is no token stored
 anywhere — nothing to rotate, nothing to leak, and no 2FA prompt for CI to fail

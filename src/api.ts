@@ -1,5 +1,20 @@
 import { parseState, type InputEvent } from './proto.ts';
 
+/**
+ * Make a string that came off the network safe to print.
+ *
+ * Error bodies and the version string are whatever the device sends. Under
+ * systemd stdout is the journal, and a terminal interprets escape sequences,
+ * so control characters are stripped and the length is capped before anything
+ * device-controlled reaches a log line.
+ */
+export function safeText(value: unknown, max = 200): string {
+  const text = String(value ?? '')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .trim();
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
 export interface DisplayElementBase {
   id: string;
   type: 'text' | 'image' | 'animation' | 'countdown' | 'rectangle';
@@ -57,15 +72,29 @@ export class BusyBarClient {
   }
 
   private async request(method: string, path: string, init: RequestInit = {}): Promise<Response> {
-    const response = await fetch(`${this.base}${path}`, {
-      ...init,
-      method,
-      headers: { ...this.headers, ...(init.headers as Record<string, string> | undefined) },
-      signal: AbortSignal.timeout(5000),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${this.base}${path}`, {
+        ...init,
+        method,
+        headers: { ...this.headers, ...(init.headers as Record<string, string> | undefined) },
+        signal: AbortSignal.timeout(5000),
+        // The Bar never redirects. Following one would send the token header
+        // and the request body to whatever host the response named — and on
+        // plain HTTP that is anyone on the path, not only the device. A
+        // redirect is therefore a failed request, never a new destination.
+        redirect: 'error',
+      });
+    } catch (error) {
+      // fetch wraps the real reason ("unexpected redirect", ECONNREFUSED) in a
+      // bare "fetch failed"; surface it so a misconfiguration is diagnosable.
+      const cause = (error as Error & { cause?: Error }).cause;
+      const detail = cause?.message ? ` (${safeText(cause.message)})` : '';
+      throw new Error(`${method} ${path} -> ${safeText((error as Error).message)}${detail}`);
+    }
     if (!response.ok) {
       const body = await response.text().catch(() => '');
-      throw new Error(`${method} ${path} -> ${response.status} ${body.trim()}`);
+      throw new Error(`${method} ${path} -> ${response.status} ${safeText(body)}`);
     }
     return response;
   }
@@ -106,8 +135,8 @@ export class BusyBarClient {
   async getBrightness(): Promise<string | null> {
     try {
       const response = await this.request('GET', '/api/display/brightness');
-      const body = (await response.json()) as { value?: string };
-      return body.value ?? null;
+      const body = (await response.json()) as { value?: unknown };
+      return typeof body.value === 'string' ? safeText(body.value, 16) : null;
     } catch {
       return null;
     }
@@ -134,6 +163,14 @@ export class BusyBarClient {
  */
 const STALE_MESSAGE_MS = 5000;
 
+/**
+ * How far ahead of this machine's clock a device timestamp may be before it is
+ * disbelieved. One far-future stamp would otherwise become the newest message
+ * seen, and everything the device sent afterwards would look stale and be
+ * dropped until the next reconnect.
+ */
+const MAX_CLOCK_AHEAD_MS = 60_000;
+
 export interface StreamHandlers {
   /** `atMs` is the device's own clock for this message, or 0 if absent. */
   onInput: (event: InputEvent, atMs: number) => void;
@@ -151,6 +188,7 @@ export class InputStream {
   /** Newest device timestamp seen, for spotting stale or replayed messages. */
   private newestDeviceMs = 0;
   private clockReported = false;
+  private skewWarned = false;
   private stopped = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
 
@@ -206,7 +244,24 @@ export class InputStream {
     socket.onmessage = (event: MessageEvent) => {
       if (typeof event.data === 'string') return;
       try {
-        const { timestampMs, events } = parseState(new Uint8Array(event.data as ArrayBuffer));
+        const parsed = parseState(new Uint8Array(event.data as ArrayBuffer));
+        const events = parsed.events;
+        let timestampMs = parsed.timestampMs;
+
+        // A stamp well ahead of our own clock is not believed: it is dropped
+        // to "no timestamp", so this message uses arrival time and does not
+        // move the high-water mark that later messages are judged against.
+        if (timestampMs > Date.now() + MAX_CLOCK_AHEAD_MS) {
+          if (!this.skewWarned) {
+            this.skewWarned = true;
+            const ahead = Math.round((timestampMs - Date.now()) / 1000);
+            console.warn(
+              `[stream] device clock is ${ahead}s ahead of this machine — ignoring its timestamps; ` +
+                'gesture timing will use arrival time',
+            );
+          }
+          timestampMs = 0;
+        }
 
         if (events.length > 0 && !this.clockReported) {
           this.clockReported = true;

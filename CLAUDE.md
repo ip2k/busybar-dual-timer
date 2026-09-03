@@ -91,8 +91,10 @@ smoke test meaningful. I/O belongs in `api.ts` and orchestration in `index.ts`.
   `rewriteRelativeImportExtensions`.
 - Colours are `#RRGGBBAA` throughout, validated in `config.ts`.
 - Config keys are all optional — `loadConfig` deep-merges the file over
-  built-in defaults, so a partial `config.json` works. Add new keys to *both*
-  the `Config` interface and the `DEFAULTS` object, and validate them.
+  built-in defaults, so a partial `config.json` works. Add new keys to *all
+  three* of the `Config` interface, the `DEFAULTS` object and the `SHAPE`
+  table (which is what flags typos), and validate them with the typed helpers
+  (`num`, `str`, `bool`, `oneOf`) — never a bare `> 0`, which coerces strings.
 
 ## Traps that have already cost time
 

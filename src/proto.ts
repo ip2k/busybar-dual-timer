@@ -58,7 +58,12 @@ class Reader {
       result += (byte & 0x7f) * 2 ** shift;
       if ((byte & 0x80) === 0) return result;
       shift += 7;
-      if (shift > 56) throw new Error('varint too long');
+      // Ten bytes is the longest valid varint, and a negative int32 or int64
+      // always uses all ten. Values past 2^53 lose precision here, which is
+      // fine: nothing this decoder reads is that large, and an out-of-range
+      // enum simply fails its table lookup. Rejecting at nine used to drop the
+      // whole message for a field the decoder was only skipping.
+      if (shift > 63) throw new Error('varint too long');
     }
     throw new Error('truncated varint');
   }

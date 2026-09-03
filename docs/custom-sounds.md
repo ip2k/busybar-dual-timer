@@ -105,6 +105,16 @@ untouched.
 Sanity check on length: at 44.1 kHz mono 16-bit, **one second is 88200 bytes**.
 If the upload log says 132300 bytes, that's exactly 1.5 seconds.
 
+### Limits
+
+A sound is refused, with a message saying why, if it is over **8 MB** on disk
+or **30 seconds** long, or if a WAV header claims a sample rate outside
+8–192 kHz. These are not aesthetic: the WAV header is untrusted input that
+sizes memory allocations, and a tiny file claiming a 1 Hz sample rate would
+otherwise expand into gigabytes of PCM. ffmpeg conversions are cut at 30
+seconds with `-t 30` for the same reason. A chime that plays three times a
+second apart has no use for more.
+
 ## Configuration
 
 ```json

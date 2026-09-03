@@ -9,7 +9,9 @@ import { GestureRecognizer, type Gesture } from '../src/gestures.ts';
 import { parseState } from '../src/proto.ts';
 import { decodeWav, detectFormat, ffmpegCommand, isWav, toDevicePcm } from '../src/audio.ts';
 import { loadConfig } from '../src/config.ts';
+import { BusyBarClient, safeText } from '../src/api.ts';
 import { mkdtempSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DualTimer } from '../src/timers.ts';
@@ -19,8 +21,11 @@ import { generateChime, tonesForSlot } from '../src/chime.ts';
 const CAPTURED = {
   startPress: 'EgZaBAoCCAI=',
   startRelease: 'EghaBgoECAIQAQ==',
+  // A network-transport update. The MAC and addresses inside it were replaced
+  // byte-for-byte with documentation values (RFC 5737 / locally administered)
+  // so the repo carries no real network details; the decoder skips them anyway.
   transportUpdate:
-    'CQmWN2SgAQAAElIqUBohEgZsZWdhY3kaETdFOjQ1OjU4OjgzOjhDOjRCIAEoRTADIisaDTE5Mi4xNjguMS4xNjMiCzE5Mi4xNjguMS4xKg0yNTUuMjU1LjI1NS4w',
+    'CQmWN2SgAQAAElIqUBohEgZsZWdhY3kaETAyOjAwOjAwOjAwOjAwOjAxIAEoRTADIisaDTIwMy4wLjExMy4xMjMiCzIwMy4wLjExMy4xKg0yNTUuMjU1LjI1NS4w',
 };
 
 function decode(b64: string) {
@@ -463,10 +468,16 @@ console.log('audio: ok');
     return file;
   };
 
-  for (const bad of ['../../../../etc/passwd', '/etc/passwd', 'sub/dir.wav', '..', '.hidden', '']) {
+  // Beyond paths: the name is also printed inside a shell command for the user
+  // to copy when ffmpeg is missing, so quotes, `$`, newlines and a leading
+  // dash are out too. Letters, digits, dot, dash, underscore — nothing else.
+  for (const bad of [
+    '../../../../etc/passwd', '/etc/passwd', 'sub/dir.wav', '..', '.hidden', '',
+    'a"$(id)".mp3', "it's.mp3", '-i.wav', 'a\nb.wav', 'a b.wav', `${'a'.repeat(200)}.wav`,
+  ]) {
     assert.throws(
       () => loadConfig(write({ expiry: { sound: { file: bad } } })),
-      /bare filename|must be a filename|must not be empty|must not start with a dot/,
+      /filename|must not be empty/,
       `expiry.sound.file ${JSON.stringify(bad)} must be rejected`,
     );
   }
@@ -488,5 +499,96 @@ console.log('audio: ok');
   assert.equal(ok.config.expiry.sound.file, 'chime.wav');
 }
 console.log('config safety: ok');
+
+// 10. Hardening regressions from the 2026-09-02 security audit.
+{
+  const dir = mkdtempSync(join(tmpdir(), 'bdt-'));
+  const write = (patch: Record<string, unknown> | string) => {
+    const file = join(dir, `${Math.random().toString(36).slice(2)}.json`);
+    writeFileSync(file, typeof patch === 'string' ? patch : JSON.stringify(patch));
+    return file;
+  };
+  const rejects = (label: string, patch: Record<string, unknown>, pattern: RegExp) =>
+    assert.throws(() => loadConfig(write(patch)), pattern, `${label} must be rejected`);
+  const timers = (extra: Record<string, unknown>) => [
+    { label: 'A', seconds: 60, color: '#2B7FFFFF', ...extra },
+    { label: 'B', seconds: 60, color: '#33D17AFF' },
+  ];
+
+  // Types are checked, not just ranges: "60" > 0 is true in JS, which is how a
+  // typo used to become behaviour.
+  rejects('a numeric string', { gestures: { coarseStepSeconds: '60' } }, /must be a number/);
+  rejects('a boolean string', { behavior: { resetOnSwitch: 'false' } }, /true or false/);
+  rejects('NaN via string', { expiry: { flashSeconds: 'abc' } }, /must be a number/);
+  rejects('negative flashSeconds', { expiry: { flashSeconds: -5 } }, /between/);
+  rejects('unbounded repeat', { expiry: { sound: { repeat: 1e9 } } }, /between/);
+  rejects('an object token', { device: { apiToken: { a: 1 } } }, /apiToken/);
+  rejects('a host with a path', { device: { host: 'evil.example/#' } }, /device\.host/);
+  rejects('a host with userinfo', { device: { host: 'user:pw@evil.example' } }, /device\.host/);
+  rejects('a host with a space', { device: { host: 'bad host' } }, /device\.host/);
+  rejects('a null app name', { app: { name: null } }, /app\.name/);
+  rejects('a fractional priority', { app: { priority: 50.5 } }, /whole number/);
+  rejects('a tone that would allocate terabytes', { timers: timers({ sound: { tones: [{ freq: 440, ms: 1e12 }] } }) }, /between/);
+  rejects('a timer longer than the display can show', { timers: timers({ seconds: 1e300 }) }, /between/);
+  assert.throws(() => loadConfig(write('[1, 2]')), /JSON object/);
+
+  // Hosts that are fine.
+  for (const host of ['10.0.4.20', 'busy.local', 'busy.local:8080', '[fe80::1]:80']) {
+    assert.equal(loadConfig(write({ device: { host } })).config.device.host, host);
+  }
+
+  // Unknown keys are reported, not silently ignored.
+  const typo = loadConfig(write({ expirey: { flashSeconds: 1 }, timers: timers({ colour: '#000000FF' }) }));
+  assert.deepEqual(typo.unknownKeys, ['expirey', 'timers[0].colour']);
+
+  // A "__proto__" key in the file must not reach any prototype chain.
+  loadConfig(write('{"__proto__": {"polluted": true}}'));
+  assert.equal(({} as Record<string, unknown>).polluted, undefined);
+
+  // Audio bounds. A header claiming 1 Hz would expand each sample 44100x.
+  assert.throws(() => decodeWav(buildWav({ sampleRate: 1, channels: 1, bitDepth: 8, frames: 200 })), /sample rate/);
+  assert.throws(() => decodeWav(buildWav({ sampleRate: 8000, channels: 1, bitDepth: 8, frames: 8000 * 31 })), /too long/);
+  assert.throws(() => toDevicePcm(new Uint8Array(44100 * 2 * 31)), /too long/);
+  assert.ok(decodeWav(buildWav({ sampleRate: 8000, channels: 1, bitDepth: 8, frames: 8000 * 29 })).pcm.byteLength > 0);
+
+  // The ffmpeg hint is pasted into a shell; a filename must not be able to
+  // smuggle a command into it.
+  const hint = ffmpegCommand(`it's "$(id)".mp3`);
+  assert.ok(hint.includes(`'it'\\''s "$(id)".mp3'`), `ffmpeg hint must single-quote the path: ${hint}`);
+
+  // A 10-byte varint is the valid encoding of any negative int32. Skipping one
+  // must not kill the message it sits in.
+  assert.deepEqual(
+    parseInputEvents(new Uint8Array([
+      0x08, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01, // field 1, varint, 10 bytes
+      0x12, 0x06, 0x5a, 0x04, 0x0a, 0x02, 0x08, 0x02, // START press
+    ])),
+    [{ kind: 'button', button: 'start', action: 'press' }],
+  );
+
+  // Device-controlled strings are made printable before they reach a log line.
+  assert.doesNotMatch(safeText('a\u001b[31mb\u0007c'), /[\u0000-\u001f]/);
+  assert.equal(safeText('x'.repeat(500)).length, 201);
+
+  // A redirect from the device is refused, never followed: following one would
+  // hand the token header and the request body to whatever host it named.
+  const server = createServer((_req, res) => {
+    res.writeHead(307, { location: 'http://127.0.0.1:9/elsewhere' });
+    res.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as { port: number };
+  let failure: Error | null = null;
+  try {
+    await new BusyBarClient(`127.0.0.1:${port}`, 'SECRET').version();
+  } catch (error) {
+    failure = error as Error;
+  }
+  server.close();
+  assert.ok(failure, 'a redirect must be an error');
+  assert.match(failure!.message, /redirect/i, `expected a redirect error, got: ${failure!.message}`);
+  assert.doesNotMatch(failure!.message, /SECRET/, 'the token must not appear in the error');
+}
+console.log('hardening: ok');
 
 console.log('\nall checks passed');

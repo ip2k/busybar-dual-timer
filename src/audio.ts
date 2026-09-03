@@ -27,6 +27,26 @@
 const TARGET_RATE = 44100;
 export const TARGET_FORMAT = 's16le mono 44100Hz';
 
+/**
+ * Bounds on what will be converted. A chime that plays three times, a second
+ * apart, has no business being longer than this — and the limit is what keeps
+ * a hostile file from turning into gigabytes of PCM: the resampler multiplies
+ * the sample count by 44100 / sampleRate, so a header claiming 1 Hz would
+ * expand a 20 KB file into 1.7 GB before anything noticed.
+ */
+export const MAX_SOUND_SECONDS = 30;
+/** Refuse to read files bigger than this at all; nothing under the duration cap comes close. */
+export const MAX_SOUND_BYTES = 8 * 1024 * 1024;
+const MIN_SAMPLE_RATE = 8000;
+const MAX_SAMPLE_RATE = 192_000;
+const MAX_CHANNELS = 8;
+
+function tooLong(seconds: number): Error {
+  return new Error(
+    `${seconds.toFixed(1)}s of audio is too long for a chime (at most ${MAX_SOUND_SECONDS}s) — trim it`,
+  );
+}
+
 export type AudioFormat = 'wav' | 'mp3' | 'flac' | 'ogg' | 'mp4' | 'aiff' | 'raw';
 
 /**
@@ -203,6 +223,13 @@ export function decodeWav(bytes: Uint8Array): ConvertedAudio {
         're-export as 16-bit PCM',
     );
   }
+  // The header is untrusted. Everything below sizes allocations from it.
+  if (sampleRate < MIN_SAMPLE_RATE || sampleRate > MAX_SAMPLE_RATE) {
+    throw new Error(`implausible sample rate ${sampleRate} Hz (expected ${MIN_SAMPLE_RATE}-${MAX_SAMPLE_RATE})`);
+  }
+  if (channels > MAX_CHANNELS) throw new Error(`implausible channel count ${channels} (at most ${MAX_CHANNELS})`);
+  const seconds = dataLength / (channels * (bitDepth / 8)) / sampleRate;
+  if (seconds > MAX_SOUND_SECONDS) throw tooLong(seconds);
 
   const raw = readSamples(view, dataAt, dataLength, bitDepth, format);
   const mono = toMono(raw, channels);
@@ -239,6 +266,8 @@ export function decodeWav(bytes: Uint8Array): ConvertedAudio {
  */
 export function toDevicePcm(bytes: Uint8Array): ConvertedAudio {
   if (isWav(bytes)) return decodeWav(bytes);
+  const seconds = bytes.byteLength / 2 / TARGET_RATE;
+  if (seconds > MAX_SOUND_SECONDS) throw tooLong(seconds);
   return {
     pcm: bytes,
     note: 'no RIFF header — assuming it is already raw s16le mono 44.1kHz PCM',
@@ -246,9 +275,22 @@ export function toDevicePcm(bytes: Uint8Array): ConvertedAudio {
   };
 }
 
-/** The command a user should run to convert something by hand. */
+/** Quote for a POSIX shell: single quotes, with any embedded single quote closed, escaped and reopened. */
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * The command a user should run to convert something by hand.
+ *
+ * This gets pasted into a terminal, so the path is quoted in a way no filename
+ * can break out of — `"$(...)"` would still expand inside double quotes.
+ */
 export function ffmpegCommand(input: string, output = 'assets/chime.wav'): string {
-  return `ffmpeg -i "${input}" -f s16le -acodec pcm_s16le -ac 1 -ar ${TARGET_RATE} "${output}"`;
+  return (
+    `ffmpeg -i ${shellQuote(input)} -t ${MAX_SOUND_SECONDS} -f s16le -acodec pcm_s16le -ac 1 ` +
+    `-ar ${TARGET_RATE} ${shellQuote(output)}`
+  );
 }
 
 export function describeUnsupported(format: AudioFormat, file: string): string {
