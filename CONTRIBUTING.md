@@ -76,6 +76,45 @@ saves the next person real time.
   check the test fails without your fix; a few tests here were confirmed
   meaningful that way.
 
+## CI and releases
+
+**Every push and pull request** runs `.github/workflows/ci.yml`: `npm ci`,
+typecheck, the offline test suite, a build, and a check that `dist/index.js`
+actually exists. It runs on **Node 22 and 24** — 22 is the floor in `engines`,
+and 24 matters because type stripping is experimental on 22 and built in from
+23, so the two take different paths.
+
+Nothing in CI needs a BUSY Bar.
+
+### Cutting a release
+
+Releases are tag-driven. Tag a commit that is already green and push the tag:
+
+```bash
+git tag -a v1.2.3 -m "v1.2.3 — what changed"
+git push origin v1.2.3
+```
+
+`.github/workflows/release.yml` then:
+
+1. **Re-runs the whole check suite.** A tag cannot ship a broken build just
+   because someone tagged a red commit.
+2. Builds and assembles a bundle: `dist/`, `package.json`,
+   `config.example.json`, `README.md`, `LICENSE`, the systemd unit, `docs/`, an
+   empty `assets/` for custom sounds, and a `QUICKSTART.txt`.
+3. **Smoke-tests the bundle it just built** — unpacks it, runs
+   `node dist/index.js`, and fails the release if it dies on a missing module,
+   a syntax error or a bad config rather than on the network. An artefact that
+   cannot start should never reach a release page.
+4. Publishes the release with the tarball and a `.sha256`.
+
+The point of the bundle is that someone who only wants the timer needs Node 22+
+and nothing else — no clone, no `npm install`, no toolchain.
+
+Both workflows use only `actions/checkout`, `actions/setup-node` and the `gh`
+CLI preinstalled on runners, so there are no third-party actions in the supply
+chain.
+
 ## Ideas
 
 `docs/roadmap.md` lists what is unfinished, including things deliberately not

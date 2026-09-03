@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Tag to release
+        description: Tag to release (must already exist)
         required: true
 
 permissions:
@@ -23,30 +23,106 @@ jobs:
           node-version: '22'
           cache: npm
 
+      # Never publish something that does not pass. These are the same steps CI
+      # runs on every push; repeating them here means a tag cannot ship a broken
+      # build just because someone tagged a red commit.
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Confirm the build produced something runnable
+        run: node -e "require('node:fs').accessSync('dist/index.js')"
 
-      # A ready-to-run bundle for people who would rather not install a
-      # toolchain: compiled JS plus an example config. Node 22+ is the only
-      # requirement, since this project has no runtime dependencies.
       - name: Assemble the bundle
         run: |
+          set -euo pipefail
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
           OUT="busy-dual-timer-${TAG}"
           mkdir -p "$OUT"
           cp -r dist "$OUT"/
           cp package.json config.example.json README.md LICENSE busy-dual-timer.service "$OUT"/
           cp -r docs "$OUT"/
+
+          # Somewhere to drop a custom sound. Without this the directory is
+          # missing and the app silently falls back to the synthesised chime.
+          mkdir -p "$OUT/assets"
+          printf 'Drop a sound file here and point expiry.sound.file at it.\nSee docs/custom-sounds.md.\n' > "$OUT/assets/README.txt"
+
+          cat > "$OUT/QUICKSTART.txt" <<'TXT'
+          busy-dual-timer — quick start
+          =============================
+
+          You need Node 22 or newer. Nothing else: this has no dependencies.
+
+            1. Enable the Bar's HTTP API
+               Connect it by USB, open http://10.0.4.20/ , Network tab,
+               "set password and enable". Over USB no password is needed.
+
+            2. Point it at your Bar
+                 cp config.example.json config.json
+               Edit "host": over USB use 10.0.4.20, over Wi-Fi use the Bar's IP
+               (Settings > Wi-Fi > your network > View IP Address) and put the
+               password you set in "apiToken".
+
+            3. Run it
+                 node dist/index.js
+
+            4. Put the mode lever on CUSTOM.
+
+          Controls
+            START                start / pause
+            scroll wheel click   switch timer A <-> B
+            double-click         reset
+            turn                 +/- 1 minute
+            hold + turn          +/- 5 seconds
+
+          Ctrl-C hands the screen back to the device.
+
+          Full documentation is in README.md and docs/.
+          TXT
+
           tar -czf "${OUT}.tar.gz" "$OUT"
+          sha256sum "${OUT}.tar.gz" > "${OUT}.tar.gz.sha256"
           echo "ASSET=${OUT}.tar.gz" >> "$GITHUB_ENV"
+          echo "TAG=${TAG}" >> "$GITHUB_ENV"
+
+      # Prove the artefact runs before handing it to anyone. It cannot reach a
+      # Bar from CI, but it must start, read its config and fail on the network
+      # rather than on a missing file or a broken module graph.
+      - name: Smoke-test the bundle
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/verify && tar xzf "$ASSET" -C /tmp/verify
+          cd "/tmp/verify/busy-dual-timer-${TAG}"
+          cp config.example.json config.json
+          set +e
+          OUTPUT=$(timeout 25s node dist/index.js 2>&1)
+          set -e
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -qiE "cannot find module|err_module|syntaxerror|config:"; then
+            echo "::error::the bundled build is not runnable"; exit 1
+          fi
+          echo "bundle starts and fails only on the network, as expected"
 
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          gh release create "$TAG" "$ASSET" \
+          gh release create "$TAG" "$ASSET" "${ASSET}.sha256" \
             --title "$TAG" \
-            --notes "Run it with Node 22+: unpack, copy config.example.json to config.json, set your Bar's address, then \`node dist/index.js\`. No runtime dependencies."
+            --generate-notes \
+            --notes-file - <<NOTES
+          ## Just want to run it?
+
+          Download \`$ASSET\` below, unpack it, and:
+
+          \`\`\`bash
+          cp config.example.json config.json   # then set your Bar's address
+          node dist/index.js
+          \`\`\`
+
+          **Node 22+ is the only requirement** — no \`npm install\`, no build step,
+          no dependencies. See \`QUICKSTART.txt\` inside the archive.
+
+          Verify the download with \`${ASSET}.sha256\`.
+          NOTES

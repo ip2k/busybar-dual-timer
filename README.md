@@ -66,6 +66,27 @@ never both be draining, so time is never charged to the wrong one.
 
 ---
 
+## Just want to run it?
+
+You don't need to clone anything or install a toolchain.
+
+1. Grab the latest `busy-dual-timer-vX.Y.Z.tar.gz` from
+   **[Releases](https://github.com/ip2k/busy-dual-timer/releases)** and unpack it.
+2. Point it at your Bar and run it:
+
+```bash
+cp config.example.json config.json   # then set "host" to your Bar's address
+node dist/index.js
+```
+
+3. Put the mode lever on **CUSTOM**.
+
+**Node 22 or newer is the only requirement** — there are no dependencies, so
+there's no `npm install` and no build step. `QUICKSTART.txt` inside the archive
+repeats this, and each release ships a `.sha256` to verify the download.
+
+Everything below is for running from source or contributing.
+
 ## Requirements
 
 - **Node 22 or newer** (`node --version`). Nothing else — no npm packages are
