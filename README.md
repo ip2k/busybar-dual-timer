@@ -39,8 +39,14 @@ flash and nothing to undo — stop the program and the Bar goes back to normal.
 | **Dial hold + turn** | ±5 seconds |
 
 **BACK does nothing, deliberately.** The Bar's firmware uses it to navigate its
-own UI, which throws this widget off the screen. See
+own UI, which can throw this widget off the screen. See
 [Why BACK is unbound](#why-back-is-unbound).
+
+> **Put the lever on CUSTOM.** With the switch on APPS, the firmware's own BACK
+> navigation can knock the widget off the panel; on CUSTOM it can't, because
+> there's nothing to navigate back to. Measured: 0 interruptions in 6 presses on
+> CUSTOM, versus reliably on APPS. The widget recovers either way, but CUSTOM
+> means it never happens.
 
 **Switching stops the clock.** Two defined behaviours, not accidents:
 
@@ -141,6 +147,27 @@ You should see:
 and the timer on the Bar's front display. Press START.
 
 `Ctrl-C` clears the display and hands the screen back to the device.
+
+### 5. Set the lever to CUSTOM
+
+The physical lever on the side of the Bar decides what the firmware does with
+your button presses, and it matters more than you'd expect.
+
+**Use CUSTOM.** On **APPS**, the firmware has its own UI to navigate, so a BACK
+press pops that stack and knocks the widget off the panel — it looks exactly
+like the program crashed, though it hasn't. On **CUSTOM** there's nothing to
+navigate back to, so the press is inert and the widget is left alone.
+
+Measured on hardware, same build, six presses each:
+
+| Lever | BACK steals the screen |
+| --- | --- |
+| APPS | yes, reliably |
+| **CUSTOM** | **no — 0 of 6** |
+
+The widget redraws itself either way (see `reassertEveryMs`), so APPS is
+survivable — it just flickers back to the device UI for a second or two. CUSTOM
+avoids it entirely.
 
 ---
 

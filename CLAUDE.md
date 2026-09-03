@@ -119,6 +119,11 @@ smoke test meaningful. I/O belongs in `api.ts` and orchestration in `index.ts`.
    signature never changes, so the widget stays gone. `behavior.reassertEveryMs`
    exists for exactly this: redraw periodically regardless of change, and
    priority 95 reclaims the panel within a couple of seconds.
+
+   **It is position-dependent, and CUSTOM is the safe one.** Measured: on APPS
+   BACK steals the screen reliably; on CUSTOM it did not once in six presses,
+   because there is no navigation stack to pop. Test on APPS if you want to see
+   the failure; run on CUSTOM if you want it not to happen.
 5. **Audio is headerless PCM despite the `.wav` name** — s16le, mono, 44.1 kHz.
    A real WAV file with a RIFF header is not what the firmware wants. Confirmed
    twice over: audible by ear, and the stock sounds are exactly 0.5 s / 1.5 s at

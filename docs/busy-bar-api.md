@@ -298,6 +298,25 @@ release:
 So press-and-spin is a usable modifier gesture — coarse vs fine adjustment, or
 "hold to change the other timer" — without any conflict between the two streams.
 
+### BACK's behaviour depends on the switch position
+
+Whether BACK disturbs your widget is decided by the physical lever. Measured on
+hardware, same program, same build, six presses each:
+
+| Lever | BACK steals the screen |
+| --- | --- |
+| **APPS** | yes — reliably |
+| **CUSTOM** | **no — 0 out of 6** |
+
+On APPS the firmware has a navigation stack to pop, so BACK exits to the device
+UI. On CUSTOM there is nothing to go back to and the press is inert, leaving the
+drawn widget untouched.
+
+So **CUSTOM is the right position for a persistent widget.** This also answers a
+question left open for a while here: firmware button behaviour is not global, it
+is contextual on the switch, which is exactly why the problem first presented as
+intermittent.
+
 ### BACK navigates the device, and you cannot stop it
 
 Pressing BACK pops the firmware's own navigation stack. If your app has drawn

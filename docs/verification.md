@@ -121,6 +121,26 @@ and 132300 bytes, exactly 0.5 s and 1.5 s of 16-bit mono 44.1 kHz.
 **Lesson for this repo: never mark an output-producing endpoint verified on the
 strength of its status code.**
 
+### The switch position decides whether BACK disturbs the widget (2026-09-03)
+
+Same program, same build, identical probe run in two lever positions:
+
+| Lever | Idle panel | After BACK |
+| --- | --- | --- |
+| **APPS** | ours | **device UI stole the screen** (ours=60, device=323), reclaimed ~2 s later |
+| **CUSTOM** | ours | **untouched** — device=0 throughout |
+
+Repeated on CUSTOM to be sure it was not luck: BACK pressed six times, sampled
+0.4 s and 1.2 s after each. **Screen stolen 0/6**, device pixels zero every time.
+
+This closes a question left open earlier — whether firmware button behaviour
+varies with the switch. It does. On APPS there is a navigation stack for BACK to
+pop; on CUSTOM there is not, so the press is inert. That contextual behaviour is
+exactly why the fault first looked intermittent.
+
+Practical upshot: **run a persistent widget with the lever on CUSTOM.** The
+`reassertEveryMs` safety net still covers anything else that takes the panel.
+
 ### Expiry no longer strobes the device UI (2026-09-03)
 
 Reported from use: the "DONE" screen flashed back and forth with the device's
@@ -301,10 +321,6 @@ This confirms the element schema, the font names, the rectangle element, the
 - **Long-run stability.** The longest observed run is minutes, over both USB and
   Wi-Fi, clean in both. Clock drift over hours, reconnect behaviour after a real
   network drop, and what happens when the device sleeps are all still unobserved.
-- **Firmware behaviour underneath the widget, per switch position.** No
-  interference was seen during the by-hand run — every press did only what the
-  widget intended — but the switch position was not recorded at the time, so
-  whether some position changes what START does natively is still open.
 - **Expiry with a real press to dismiss it.** Expiry, flash and chime have run to
   completion on their own timer; acknowledging one with a physical tap has not
   been tried.

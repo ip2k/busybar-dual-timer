@@ -88,9 +88,12 @@ This was found the hard way — reset was originally bound to BACK, and pressing
 it looked like the app had crashed. It hadn't; the gesture fired correctly every
 time and the process was fine. Only the display was lost.
 
-The effect is contextual. At the root of the device's navigation stack BACK does
-nothing, so the problem is intermittent, which makes it more confusing rather
-than less.
+The effect is contextual, which makes it more confusing rather than less. At the
+root of the device's navigation stack BACK does nothing — and, more usefully,
+**the physical lever decides whether there is a stack at all.** Measured across
+six presses in each position: on APPS the screen is stolen reliably, on CUSTOM
+it was not stolen once. Running with the lever on CUSTOM avoids the problem
+rather than recovering from it.
 
 Two consequences, and both matter:
 
