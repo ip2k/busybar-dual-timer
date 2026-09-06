@@ -4,6 +4,8 @@
  *
  *   node tools/js-app.mjs build      compile src/ + js-app/src/ into one file
  *   node tools/js-app.mjs install    upload the built app to the Bar
+ *   node tools/js-app.mjs enable     switch on JS apps in the APPS menu
+ *   node tools/js-app.mjs disable    switch them off again
  *   node tools/js-app.mjs logs       dump the device log and show our lines
  *   node tools/js-app.mjs list       show what is installed in /ext/user_assets
  *   node tools/js-app.mjs remove     delete the app from the Bar
@@ -201,7 +203,32 @@ async function remove() {
   console.log('removed');
 }
 
-const commands = { build, install, logs, list, remove };
+/**
+ * JS apps are hidden behind a feature flag, and the flag is simply a file:
+ * `apps_menu_is_js_apps_enabled()` in the firmware returns true if
+ * /ext/apps_data/apps_menu/js_apps_enabled exists and is not a directory. Its
+ * contents are never read.
+ *
+ * Until it exists the APPS menu shows a "Coming soon" placeholder *instead of*
+ * enumerating /ext/user_assets, so a correctly installed app is simply
+ * invisible. This is the first thing to check when an app does not appear.
+ */
+const JS_FLAG = '/ext/apps_data/apps_menu/js_apps_enabled';
+
+async function enable() {
+  await call('POST', `/api/storage/write?path=${JS_FLAG}`, Buffer.from('1'));
+  const listing = JSON.parse(await call('GET', '/api/storage/list?path=/ext/apps_data/apps_menu'));
+  const present = listing.list.some((e) => e.name === 'js_apps_enabled' && e.type === 'file');
+  console.log(present ? `enabled: ${JS_FLAG} created` : 'FAILED: flag file not present after write');
+  console.log('Leave the APPS menu and re-enter it — the flag is read when the menu opens.');
+}
+
+async function disable() {
+  await call('POST', `/api/storage/remove?path=${JS_FLAG}`);
+  console.log(`disabled: ${JS_FLAG} removed`);
+}
+
+const commands = { build, install, enable, disable, logs, list, remove };
 const command = process.argv[2];
 if (!commands[command]) {
   console.error(`usage: node tools/js-app.mjs <${Object.keys(commands).join('|')}> [--host <addr>]`);

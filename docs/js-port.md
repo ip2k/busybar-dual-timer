@@ -20,6 +20,7 @@ work is small once that lands; see [What a port would actually cost](#what-a-por
 ## How to reproduce any of this
 
 ```bash
+node tools/js-app.mjs enable    # switch JS apps on -- see below, do this first
 node tools/js-app.mjs build     # bundle src/ + js-app/src/ into one script
 node tools/js-app.mjs install   # upload to the Bar
 node tools/js-app.mjs logs      # read console output back over HTTP
@@ -27,6 +28,30 @@ node tools/js-app.mjs remove    # uninstall
 ```
 
 Then launch **Dual Timer** from the device's APPS menu.
+
+### JS apps are behind a feature flag, and it is off by default
+
+**Do `enable` first, or a perfectly good app is simply invisible.**
+
+`apps_menu_is_js_apps_enabled()` returns true if
+`/ext/apps_data/apps_menu/js_apps_enabled` exists and is not a directory. The
+file's *contents are never read* — only its existence is tested. Creating it is
+a one-line storage write, which is all `enable` does.
+
+Until it exists, `apps_menu_scene_main.c` lists the native apps through
+`AppsMenuEntryIdxMax`, which includes a **"Coming soon"** placeholder, and never
+enumerates `/ext/user_assets` at all. Once it exists, the native list stops
+short at `AppsMenuEntryIdxComingSoon` and JS apps are listed in place of the
+placeholder. So "Coming soon" in the APPS menu is not a missing feature or a
+broken install — it is the flag being off.
+
+The flag is read when the menu scene is entered, so leaving the APPS menu and
+re-entering it is enough. No reboot.
+
+One related gate: an app whose manifest sets `"debug": true` is hidden unless
+the device's NVM debug flag is set. The firmware's own `app.busy.js_example`
+ships with `debug: true`, which is why it does not appear either. This app sets
+it to `false`.
 
 `logs` is the useful one: `console.log` in a JS app goes to the firmware log,
 and 1.2.3 added `POST /api/log_dump`, which snapshots that log to a file you
@@ -229,6 +254,7 @@ Per `CONTRIBUTING.md`, claims here are marked for how they were established.
 | Package format (`appmeta/`, `scripts/main.js`) | **verified** — matches the on-device example and the official docs |
 | App installs over HTTP with no USB | **verified** — uploaded and listed back |
 | `POST /api/log_dump` + `storage/read` returns console output | **verified** — dumped and read, including `[D]` level |
+| JS apps are gated on the `js_apps_enabled` flag file | **verified** — the APPS menu showed "Coming soon" until the file was created |
 | No input endpoint exists in the HTTP API | **verified** — full 1.2.3 OpenAPI searched |
 | No WebSocket binding in the runtime | **inferred** — read from the complete `js_runner` binding list |
 | No `performance`, no monotonic clock | **inferred** — same source; probed at runtime by the app |
