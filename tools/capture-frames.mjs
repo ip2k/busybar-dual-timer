@@ -144,23 +144,70 @@ function snap(label, color, remainingMs, totalMs, phase) {
   };
 }
 
-/** The story the demo tells: A counting, pausing, handing over to B, expiring. */
+/**
+ * The story the demo tells, one entry per beat.
+ *
+ * Only `snapshot` / `blinkOn` / `alarm` reach the device — those are what
+ * `render.ts` turns into a real draw that gets photographed back. The rest is
+ * metadata for the 3D render, describing things a panel capture cannot show:
+ * the status LED, the START pad going down, the wheel turning.
+ *
+ * `hold` is how many output frames the beat occupies. The inverting alarm needs
+ * it: at one beat per frame the inversion flickers past too fast to register,
+ * which is exactly what the first cut of this demo got wrong.
+ */
 function sequence() {
   const frames = [];
-  const push = (snapshot, blinkOn, alarm) => frames.push({ snapshot, blinkOn, alarm });
+  const push = (snapshot, opts = {}) =>
+    frames.push({
+      snapshot,
+      blinkOn: opts.blinkOn ?? true,
+      alarm: opts.alarm ?? false,
+      led: opts.led ?? null,
+      press: opts.press ?? 0,
+      wheel: opts.wheel ?? 0,
+      hold: opts.hold ?? 1,
+      chip: opts.chip ?? null,
+      caption: opts.caption ?? null,
+    });
 
   const aTotal = 25 * 60 * 1000;
-  for (let s = 0; s < 8; s++) push(snap('A', A, aTotal - s * 1000, aTotal, 'running'), true, false);
-  for (let i = 0; i < 4; i++) push(snap('A', A, aTotal - 8000, aTotal, 'paused'), i % 2 === 0, false);
-
   const bTotal = 5 * 60 * 1000;
-  for (let s = 0; s < 8; s++) push(snap('B', B, bTotal - s * 1000, bTotal, 'running'), true, false);
-  for (let s = 0; s < 3; s++) push(snap('B', B, 3000 - s * 1000, bTotal, 'running'), true, false);
-  for (let i = 0; i < 6; i++) push(snap('B', B, 0, bTotal, 'expired'), i % 2 === 0, true);
-  for (let i = 0; i < 2; i++) push(snap('B', B, 0, bTotal, 'expired'), false, false);
+
+  push(snap('A', A, aTotal, aTotal, 'idle'), { hold: 4, chip: 'CUSTOM', caption: 'lever on CUSTOM \u2192 the timer takes the panel' });
+
+  // START goes down, and the firmware's notification preset fires in the
+  // timer's colour. Three blinks is the preset's own behaviour, not a choice.
+  push(snap('A', A, aTotal, aTotal, 'running'), { led: A, press: 1, hold: 2, chip: 'START', caption: 'START \u2192 running, LED blinks timer A\u2019s colour' });
+  push(snap('A', A, aTotal - 200, aTotal, 'running'), { press: 0, hold: 1 });
+  push(snap('A', A, aTotal - 1000, aTotal, 'running'), { led: A, hold: 1 });
+  push(snap('A', A, aTotal - 2000, aTotal, 'running'), { hold: 1 });
+  push(snap('A', A, aTotal - 3000, aTotal, 'running'), { led: A, hold: 1 });
+
+  for (let s = 4; s <= 7; s++) push(snap('A', A, aTotal - s * 1000, aTotal, 'running'), { hold: 1 });
+
+  // The wheel adds a minute per detent.
+  push(snap('A', A, aTotal - 7000, aTotal, 'paused'), { wheel: 14, hold: 2, chip: 'WHEEL', caption: 'turn the wheel \u2192 \u00b1 1 minute per click' });
+  push(snap('A', A, aTotal + 53000, aTotal + 60000, 'paused'), { wheel: 28, hold: 3 });
+
+  // Pressing the dial switches to B, and the LED takes B's colour.
+  push(snap('B', B, bTotal, bTotal, 'idle'), { led: B, wheel: 34, hold: 2, chip: 'PRESS', caption: 'press the wheel \u2192 switch to timer B' });
+  push(snap('B', B, bTotal, bTotal, 'running'), { wheel: 34, hold: 1, chip: 'START', caption: 'B is running \u2014 A keeps its remaining time' });
+  for (let s = 1; s <= 4; s++) push(snap('B', B, bTotal - s * 1000, bTotal, 'running'), { hold: 1 });
+
+  for (let s = 3; s >= 1; s--) push(snap('B', B, s * 1000, bTotal, 'running'), { hold: 1 });
+
+  // Expiry: the panel inverts on each blink and the LED fires again. Both need
+  // holding, or the whole alarm is over in half a second.
+  for (let i = 0; i < 4; i++) {
+    push(snap('B', B, 0, bTotal, 'expired'), { blinkOn: true, alarm: true, led: B, hold: 3, chip: 'DONE', caption: 'expired \u2192 the panel inverts and the LED fires' });
+    push(snap('B', B, 0, bTotal, 'expired'), { blinkOn: false, alarm: true, hold: 3 });
+  }
+
+  // The quiet DONE that holds afterwards.
+  push(snap('B', B, 0, bTotal, 'expired'), { blinkOn: false, alarm: false, hold: 6, chip: 'DONE', caption: 'DONE holds until you acknowledge it' });
   return frames;
 }
-
 /* -------------------------------------------------------------- main ---- */
 
 if (HOST === 'x') {
@@ -172,6 +219,8 @@ mkdirSync(OUT, { recursive: true });
 const frames = sequence();
 console.log(`capturing ${frames.length} frames from ${HOST} -> ${OUT}`);
 
+const manifest = [];
+
 for (const [i, state] of frames.entries()) {
   const payload = buildPayload(state, { applicationName: APP, priority: 95 });
   await post('/api/display/draw', payload);
@@ -180,6 +229,15 @@ for (const [i, state] of frames.entries()) {
   const rgb = await grab();
   const name = join(OUT, `frame_${String(i).padStart(3, '0')}.png`);
   writeFileSync(name, png(rgb, WIDTH, HEIGHT, 1));
+  manifest.push({
+    file: `frame_${String(i).padStart(3, '0')}.png`,
+    led: state.led,
+    press: state.press,
+    wheel: state.wheel,
+    hold: state.hold,
+    chip: state.chip,
+    caption: state.caption,
+  });
   const lit = (() => {
     let n = 0;
     for (let p = 0; p < WIDTH * HEIGHT; p++) if ((rgb[p * 3] + rgb[p * 3 + 1] + rgb[p * 3 + 2]) / 3 > 10) n++;
@@ -189,4 +247,6 @@ for (const [i, state] of frames.entries()) {
 }
 
 await fetch(`http://${HOST}/api/display/draw?application_name=${APP}`, { method: 'DELETE' }).catch(() => {});
-console.log(`\ndone. ${frames.length} PNGs in ${OUT}`);
+writeFileSync(join(OUT, 'frames.json'), JSON.stringify(manifest, null, 2) + '\n');
+const outputFrames = manifest.reduce((n, m) => n + m.hold, 0);
+console.log(`\ndone. ${frames.length} PNGs -> ${outputFrames} output frames, in ${OUT}`);

@@ -13,7 +13,7 @@ hardware did.
 `--test` renders a single frame, which is the fast way to check framing and
 that the panel is not mirrored.
 """
-import bpy, sys, os, math
+import bpy, sys, os, math, json
 from mathutils import Vector
 
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
@@ -113,6 +113,99 @@ for loop in screen.data.loops:
     v = (w.z - z0) / (z1 - z0)
     uv[loop.index].uv = (u, v)
 
+# ------------------------------------------------------------------- LED ---
+
+# The status LED sits under the START pad and spills out around its lower
+# edges, so it is built as two parts: the strips themselves are emissive, and a
+# small point light underneath throws that colour onto the surrounding body.
+# Lighting the strips alone reads as two bright slots rather than as a glow.
+led_mat = bpy.data.materials.new("busy_led")
+led_mat.use_nodes = True
+lnt = led_mat.node_tree
+lnt.nodes.clear()
+led_emit = lnt.nodes.new("ShaderNodeEmission")
+led_out = lnt.nodes.new("ShaderNodeOutputMaterial")
+lnt.links.new(led_emit.outputs["Emission"], led_out.inputs["Surface"])
+
+LED_MESHES = [bpy.data.objects[n] for n in ("led_light_1", "led_light_2") if n in bpy.data.objects]
+for o in LED_MESHES:
+    o.data.materials.clear()
+    o.data.materials.append(led_mat)
+
+glow_data = bpy.data.lights.new("led_glow", type="POINT")
+glow_data.use_shadow = False
+glow_data.shadow_soft_size = 0.012
+glow = bpy.data.objects.new("led_glow", glow_data)
+# Just beneath the pad's underside, centred on it.
+glow.location = (0.004, 0.0, 0.0225)
+bpy.context.collection.objects.link(glow)
+
+
+def set_led(hex_color):
+    """`hex_color` is #RRGGBB(AA) from the capture manifest, or None for off."""
+    if not hex_color:
+        led_emit.inputs["Color"].default_value = (0, 0, 0, 1)
+        led_emit.inputs["Strength"].default_value = 0.0
+        glow_data.energy = 0.0
+        return
+    h = hex_color.lstrip("#")
+    # sRGB -> linear, so the rendered colour matches the hex the config asked for.
+    rgb = []
+    for i in (0, 2, 4):
+        c = int(h[i:i + 2], 16) / 255.0
+        rgb.append(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4)
+    led_emit.inputs["Color"].default_value = (*rgb, 1)
+    led_emit.inputs["Strength"].default_value = 24.0
+    glow_data.color = rgb
+    glow_data.energy = 0.24
+
+
+# ---------------------------------------------------------------- controls ---
+
+START_PARTS = [bpy.data.objects[n] for n in ("button_start_body", "button_start_orange_part")
+               if n in bpy.data.objects]
+START_REST = [o.location.copy() for o in START_PARTS]
+WHEEL_PARTS = [bpy.data.objects[n] for n in ("wheel_body", "wheel_cap", "wheel_orange_part")
+               if n in bpy.data.objects]
+WHEEL_REST = [o.rotation_euler.copy() for o in WHEEL_PARTS]
+WHEEL_CENTRE = Vector((0.0, 0.057, 0.026))
+
+
+def set_press(amount):
+    """0 = at rest, 1 = fully depressed. The pad travels about a millimetre."""
+    for o, rest in zip(START_PARTS, START_REST):
+        o.location = rest + Vector((0, 0, -0.0012 * amount))
+
+
+def set_wheel(degrees):
+    """Turn the scroll wheel about its own vertical axis."""
+    for o, rest in zip(WHEEL_PARTS, WHEEL_REST):
+        o.rotation_mode = "XYZ"
+        o.rotation_euler = (rest[0], rest[1], rest[2] + math.radians(degrees))
+
+
+# The mode lever. This app only takes the panel when the lever is on CUSTOM --
+# on any other position the device behaves completely normally -- so the demo
+# should show the position it is actually describing.
+LEVER_PARTS = [bpy.data.objects[n] for n in
+               ("posselector_body", "posselector_cap", "posselector_orange_part")
+               if n in bpy.data.objects]
+LEVER_PIVOT = Vector((0.0, -0.0455, 0.0255))
+# -30 degrees puts the lever's tip on the CUSTOM notch. Checked against a
+# top-down render of the printed guide: the rest position is OFF (centre), -20
+# lands between CUSTOM and OFF, and -40 overshoots toward BUSY.
+LEVER_DEG = float(arg("--lever", -30))
+if LEVER_DEG:
+    import mathutils
+    rot = mathutils.Matrix.Rotation(math.radians(LEVER_DEG), 4, "Z")
+    for o in LEVER_PARTS:
+        o.matrix_world = (
+            mathutils.Matrix.Translation(LEVER_PIVOT)
+            @ rot
+            @ mathutils.Matrix.Translation(-LEVER_PIVOT)
+            @ o.matrix_world
+        )
+
 # ------------------------------------------------------------ camera/light ---
 
 cam_data = bpy.data.cameras.new("cam")
@@ -150,6 +243,10 @@ def area(name, loc, rot, size, energy):
     d = bpy.data.lights.new(name, type="AREA")
     d.size = size
     d.energy = energy
+    # Shadows off: the key was casting a hard edge across the scroll wheel,
+    # which on a white product reads as a smudge rather than as form. The
+    # shapes are legible from shading alone.
+    d.use_shadow = False
     o = bpy.data.objects.new(name, d)
     o.location = loc
     o.rotation_euler = rot
@@ -159,9 +256,50 @@ def area(name, loc, rot, size, energy):
 
 # Key from front-right, fill from the left, and a rim behind to separate the
 # black body from the black background.
-area("key", (0.34, -0.20, 0.24), (math.radians(52), 0, math.radians(50)), 0.45, 15)
-area("fill", (0.22, 0.26, 0.05), (math.radians(84), 0, math.radians(-140)), 0.55, 5)
-area("rim", (-0.16, 0.10, 0.18), (math.radians(122), 0, math.radians(-160)), 0.40, 11)
+# Two stops down from the first cut, which blew out the white body against the
+# black ground. Energies are quartered rather than moving the view transform,
+# so the emissive panel keeps its brightness.
+area("key", (0.34, -0.20, 0.24), (math.radians(52), 0, math.radians(50)), 0.45, 3.75)
+area("fill", (0.22, 0.26, 0.05), (math.radians(84), 0, math.radians(-140)), 0.55, 1.25)
+area("rim", (-0.16, 0.10, 0.18), (math.radians(122), 0, math.radians(-160)), 0.40, 2.75)
+
+# -------------------------------------------------------------- backdrop ---
+
+# An 8-bit sky behind the device, generated by tools/make-backdrop.py. Emissive
+# rather than lit, so it renders at its own colours and the product lighting
+# does not have to serve two jobs.
+BACKDROP = arg("--backdrop", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                          "..", "docs", "demo-backdrop.png"))
+if os.path.exists(BACKDROP):
+    bpy.ops.mesh.primitive_plane_add(size=1.0)
+    plane = bpy.context.active_object
+    plane.name = "backdrop"
+
+    view = (target - cam.location).normalized()
+    BACK_DIST = 0.55
+    plane.location = target + view * BACK_DIST
+    plane.rotation_euler = (-view).to_track_quat("Z", "Y").to_euler()
+    # Sized to just fill the frame at its own distance, rather than guessed:
+    # half-width = distance * tan(hfov/2), with the sensor 36mm wide. Guessing
+    # left most of the sky outside the frame and magnified what remained.
+    d = DIST + BACK_DIST
+    half_w = d * (36.0 / 2.0) / cam_data.lens
+    half_h = half_w * RES_Y / RES_X
+    plane.scale = (half_w * 2.06, half_h * 2.06, 1.0)
+
+    bmat = bpy.data.materials.new("backdrop")
+    bmat.use_nodes = True
+    bnt = bmat.node_tree
+    bnt.nodes.clear()
+    bemit = bnt.nodes.new("ShaderNodeEmission")
+    bemit.inputs["Strength"].default_value = 1.6
+    btex = bnt.nodes.new("ShaderNodeTexImage")
+    btex.image = bpy.data.images.load(os.path.abspath(BACKDROP))
+    btex.interpolation = "Closest"   # keep the pixel art blocky
+    bout = bnt.nodes.new("ShaderNodeOutputMaterial")
+    bnt.links.new(btex.outputs["Color"], bemit.inputs["Color"])
+    bnt.links.new(bemit.outputs["Emission"], bout.inputs["Surface"])
+    plane.data.materials.append(bmat)
 
 # ----------------------------------------------------------------- render ---
 
@@ -179,13 +317,25 @@ except Exception:
     pass
 
 os.makedirs(OUT, exist_ok=True)
-frames = sorted(f for f in os.listdir(FRAMES) if f.endswith(".png"))
+
+# frames.json carries the state a panel capture cannot: LED colour, how far the
+# START pad is down, how far the wheel has turned, and how many output frames
+# the beat should occupy.
+manifest_path = os.path.join(FRAMES, "frames.json")
+if os.path.exists(manifest_path):
+    with open(manifest_path) as fh:
+        manifest = json.load(fh)
+else:
+    manifest = [{"file": f, "led": None, "press": 0, "wheel": 0, "hold": 1}
+                for f in sorted(f for f in os.listdir(FRAMES) if f.endswith(".png"))]
+
 if TEST:
-    frames = frames[:1]
+    manifest = manifest[int(arg("--test-frame", 0)):int(arg("--test-frame", 0)) + 1]
 
 panel_image = None
-for i, name in enumerate(frames):
-    path = os.path.join(FRAMES, name)
+out_index = 0
+for i, entry in enumerate(manifest):
+    path = os.path.join(FRAMES, entry["file"])
     if panel_image is None:
         panel_image = bpy.data.images.load(path)
         panel_image.colorspace_settings.name = "sRGB"
@@ -193,8 +343,21 @@ for i, name in enumerate(frames):
     else:
         panel_image.filepath = path
         panel_image.reload()
-    scene.render.filepath = os.path.join(OUT, f"r_{i:03d}.png")
+
+    set_led(entry.get("led"))
+    set_press(entry.get("press", 0))
+    set_wheel(entry.get("wheel", 0))
+
+    # Render once, then copy for the hold rather than re-rendering identical
+    # frames -- the scene has not changed, so the pixels would be identical.
+    first = os.path.join(OUT, f"r_{out_index:03d}.png")
+    scene.render.filepath = first
     bpy.ops.render.render(write_still=True)
-    print(f"rendered {i + 1}/{len(frames)}", flush=True)
+    out_index += 1
+    for _ in range(max(0, int(entry.get("hold", 1)) - 1)):
+        import shutil
+        shutil.copyfile(first, os.path.join(OUT, f"r_{out_index:03d}.png"))
+        out_index += 1
+    print(f"rendered {i + 1}/{len(manifest)} -> {out_index} frames", flush=True)
 
 print("DONE")

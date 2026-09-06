@@ -73,19 +73,32 @@ pixels in the GIF are the pixels the hardware lit.
 Two steps, and the first needs a device:
 
 ```bash
+# 0. The 8-bit backdrop. Deterministic, so this only needs rerunning if changed.
+python3 tools/make-backdrop.py docs/demo-backdrop.png
+
 # 1. Photograph the panel. Builds each frame with this project's real render.ts,
-#    POSTs it, then reads it back with GET /api/screen?display=0.
+#    POSTs it, then reads it back with GET /api/screen?display=0. Also writes
+#    frames.json, describing what a capture cannot show: LED colour, the START
+#    pad going down, the wheel turning, and the caption for each beat.
 node tools/capture-frames.mjs --host <bar> --out .js-build/frames
 
 # 2. Project those frames onto the model and render.
 blender -b -noaudio -P tools/render-demo.py -- \
     --fbx <path>/busy-bar.fbx --frames .js-build/frames --out .js-build/render
 
-# 3. Assemble.
-ffmpeg -y -framerate 5.5 -i .js-build/render/r_%03d.png \
-  -vf "scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=160:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" \
+# 3. Add the header strip and caption bar. Needs Pillow.
+python3 tools/compose-demo.py --render .js-build/render \
+    --frames .js-build/frames --out .js-build/composed
+
+# 4. Assemble.
+ffmpeg -y -framerate 6 -i .js-build/composed/c_%03d.png \
+  -vf "scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=192:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" \
   -loop 0 docs/demo.gif
 ```
+
+Only step 3 needs a package (`pip install pillow`), and only for text rendering.
+Everything else is Blender, ffmpeg and the standard library, so nothing reaches
+the shipped package.
 
 Add `--test` to the Blender step to render a single frame, which is the fast way
 to check framing before committing to all of them.
@@ -97,6 +110,15 @@ Two details worth knowing if you change it:
   into the body's texture atlas — with a clean 0–1 projection, and derives the
   orientation from world axes. Get the U direction backwards and the digits
   render mirrored, which is obvious immediately.
+- **The mode lever is rotated to CUSTOM**, which is the position this app
+  requires. `-30°` was picked by rendering the printed guide from directly above
+  and checking where the tip lands: the model's rest position is OFF, `-20°`
+  falls between CUSTOM and OFF, and `-40°` overshoots toward BUSY.
+- **Lights cast no shadows.** The key was drawing a hard edge across the scroll
+  wheel, which on a white product reads as a smudge rather than as form.
+- **The backdrop is original artwork.** `tools/make-backdrop.py` draws it from
+  scratch with the standard library. It is deliberately not a copy of any
+  existing character — see the note in that file.
 - **The camera is framed to match `docs/controls.jpg`**, looking down about 32°
   so the mode lever, START pad and scroll wheel all read while the front panel
   stays legible. A near-level camera compresses the top face to a sliver and
