@@ -64,6 +64,47 @@ If you learn something new about the device, add it to `docs/busy-bar-api.md`
 with its status. Negative results are welcome — "I tried X and it did nothing"
 saves the next person real time.
 
+## Regenerating the demo
+
+`docs/demo.gif` is not a mockup. It is real device output, photographed off the
+panel and then projected onto the manufacturer's own 3D model of the Bar, so the
+pixels in the GIF are the pixels the hardware lit.
+
+Two steps, and the first needs a device:
+
+```bash
+# 1. Photograph the panel. Builds each frame with this project's real render.ts,
+#    POSTs it, then reads it back with GET /api/screen?display=0.
+node tools/capture-frames.mjs --host <bar> --out .js-build/frames
+
+# 2. Project those frames onto the model and render.
+blender -b -noaudio -P tools/render-demo.py -- \
+    --fbx <path>/busy-bar.fbx --frames .js-build/frames --out .js-build/render
+
+# 3. Assemble.
+ffmpeg -y -framerate 5.5 -i .js-build/render/r_%03d.png \
+  -vf "scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=160:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" \
+  -loop 0 docs/demo.gif
+```
+
+Add `--test` to the Blender step to render a single frame, which is the fast way
+to check framing before committing to all of them.
+
+Two details worth knowing if you change it:
+
+- **The panel quad is 4.5:1, which is exactly 72×16**, so captures map onto it
+  with no distortion. The script replaces the model's imported UVs — they point
+  into the body's texture atlas — with a clean 0–1 projection, and derives the
+  orientation from world axes. Get the U direction backwards and the digits
+  render mirrored, which is obvious immediately.
+- **The camera is framed to match `docs/controls.jpg`**, looking down about 32°
+  so the mode lever, START pad and scroll wheel all read while the front panel
+  stays legible. A near-level camera compresses the top face to a sliver and
+  loses the controls the demo exists to show.
+
+The model is BUSY's own, from their published FBX with its 4K PBR texture set.
+It is not redistributed here; point `--fbx` at your own copy.
+
 ## Pull requests
 
 - Keep the change focused. Unrelated fixes are easier to review separately.
