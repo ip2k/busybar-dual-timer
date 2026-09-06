@@ -1,7 +1,8 @@
 # BUSY Bar HTTP API — working notes
 
 Everything below marked **verified** was checked against a real device
-(`<bar-ip>`, firmware API `25.0.0`). Everything else is from published docs
+(`<bar-ip>`). Originally written against firmware API `25.0.0`; re-checked
+against **`27.5.0`** (firmware 1.2.3, 2026-09-06) — see "What 27.5.0 adds" below. Everything else is from published docs
 or library source and should be treated as unconfirmed.
 
 Spec: `http://<bar>/openapi.yaml` — **not** `/openapi.json`, which 404s.
@@ -566,3 +567,49 @@ Worth doing before adding more experimentally-derived notes here.
   that's why this project talks to the API directly.
 - Firmware source: https://github.com/busy-app/busybar-firmware
 - Protobuf schemas: https://github.com/busy-app/busybar-protobuf
+
+
+## What 27.5.0 adds (firmware 1.2.3)
+
+Checked against `http://<bar>/openapi.yaml` on a device running 1.2.3. The API
+went `25.0.0` -> `27.5.0`, and several additions are directly useful to this
+project. **Verified as present in the spec; not yet exercised on hardware
+except where noted.**
+
+### Worth adopting
+
+- **`z_index` on every element.** Explicit draw order, higher on top.
+  `render.ts` currently relies on array order — the comment "`flash` is first
+  so it sits behind the text" is load-bearing. `z_index` makes that explicit
+  and stops a reordering from silently changing the layering.
+- **`display_until`** on any element: a Unix timestamp (seconds) at which the
+  firmware hides it. Mutually exclusive with `timeout`. This is a better fit for
+  `expiry.holdSeconds` than tracking the deadline ourselves.
+- **`element_ids` on `DELETE /api/display/draw`.** Delete named elements rather
+  than everything, with `application_name` as an ownership check. Related to
+  trap #11 in `CLAUDE.md`: the constant-id-set trick exists because a clear
+  shows the firmware's own screen, and selective deletion is a second tool for
+  the same problem.
+- **`countdown` element** — not new, but never used here, and it is the single
+  biggest win available. It takes the Unix timestamp it counts to, plus
+  `direction` (`time_left` / `time_since`) and `show_hours`, and **the firmware
+  animates it with no further requests**. On-device this cut a demo run from 99
+  requests to 7. The cost is losing font and layout control.
+
+### Also new
+
+- **`xpmbitmap` element type** for XPM2 bitmaps — a route to custom glyphs
+  without the image upload path.
+- **`POST /api/log_dump`** snapshots the in-memory log to a file you can then
+  read with `GET /api/storage/read`. **Verified** — this is how the on-device
+  JS app is debugged over the network.
+- **`POST /api/storage/write?append=1`** appends instead of replacing.
+- `/api/smart_home/*` (Home Assistant) and `/api/ble/*` — not relevant here.
+
+### Clarified rather than changed
+
+The `priority` field is now documented in detail: accepted when `>=` the
+running system app's, stub/poweroff = 0, built-in apps = 10, an active
+BUSY/CUSTOM session = 90, and **equal-priority requests from a different
+`application_name` override what is on screen**. That last clause was not
+previously written down and explains why priority 95 is reliable here.

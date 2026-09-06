@@ -64,14 +64,42 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             npm version "$BUMP" -m "v%s"
-            git push --follow-tags
             TAG="v$(node -p "require('./package.json').version")"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
           else
             [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::tag must look like v1.2.3"; exit 1; }
             TAG="$REF_NAME"
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Releasing $TAG"
+
+      # The release notes are the changelog's section for this version, so what
+      # ships is what someone deliberately wrote about it -- not an
+      # auto-generated commit list. Deliberately before the tag is pushed: a
+      # missing section fails here, with nothing yet published and only a local
+      # tag to discard.
+      - name: Take the release notes from CHANGELOG.md
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          awk -v v="$VERSION" '
+            $0 ~ ("^## \\[" v "\\]") { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          if [ ! -s RELEASE_NOTES.md ]; then
+            echo "::error::CHANGELOG.md has no '## [$VERSION]' section. Add one before releasing."
+            exit 1
+          fi
+          echo "Release notes for $VERSION:"
+          cat RELEASE_NOTES.md
+
+      - name: Push the version commit and tag
+        if: ${{ steps.version.outputs.pushed == 'false' }}
+        run: git push --follow-tags
 
       - run: npm run build
       - name: Confirm the build produced something runnable
@@ -139,10 +167,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
-          gh release create "$TAG" "$ASSET" "${ASSET}.sha256" \
-            --title "$TAG" \
-            --generate-notes \
-            --notes-file - <<NOTES
+          {
+            cat RELEASE_NOTES.md
+            cat <<NOTES
+
           ## Install
 
           \`\`\`bash
@@ -155,4 +183,10 @@ jobs:
 
           Prefer no npm? Download \`$ASSET\`, unpack, and run \`node dist/index.js\`.
           Node 22+ is the only requirement either way. Verify with \`${ASSET}.sha256\`.
+
+          **Full changelog:** [CHANGELOG.md](https://github.com/ip2k/busybar-dual-timer/blob/${TAG}/CHANGELOG.md)
           NOTES
+          } > release-body.md
+          gh release create "$TAG" "$ASSET" "${ASSET}.sha256" \
+            --title "$TAG" \
+            --notes-file release-body.md

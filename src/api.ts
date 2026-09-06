@@ -32,6 +32,14 @@ export interface DisplayElementBase {
     | 'bottom_mid'
     | 'bottom_right';
   timeout?: number;
+  /**
+   * Explicit draw order; higher sits on top. Added in device API 27.5.0.
+   *
+   * Without it the firmware falls back to array order, which works but makes
+   * the layering an accident of how `elementsFor` happens to build its list —
+   * reorder the array and the flash silently covers the text.
+   */
+  z_index?: number;
 }
 
 export interface TextElement extends DisplayElementBase {

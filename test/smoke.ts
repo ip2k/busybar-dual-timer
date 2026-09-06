@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DualTimer } from '../src/timers.ts';
 import { formatDuration, buildPayload } from '../src/render.ts';
+import { msUntilNextTick } from '../src/clock.ts';
 import { generateChime, tonesForSlot } from '../src/chime.ts';
 
 const CAPTURED = {
@@ -329,7 +330,53 @@ for (const element of payload.elements) {
     'no field means the LED is left alone',
   );
 }
+// z_index states the layering rather than leaving it to array order, so the
+// flash panel cannot end up over the time by someone reordering elementsFor.
+{
+  const snapshot = new DualTimer([
+    { label: 'A', seconds: 60, color: '#00E5FFFF' },
+    { label: 'B', seconds: 30, color: '#39FF14FF' },
+  ]).snapshot();
+  const payload = buildPayload({ snapshot, blinkOn: true }, { applicationName: 'x', priority: 95 });
+
+  const z = new Map(payload.elements.map((e) => [e.id, e.z_index]));
+  for (const id of ['flash', 'bar', 'label', 'time']) {
+    assert.equal(typeof z.get(id), 'number', `${id} should carry a z_index`);
+  }
+  assert.ok(z.get('flash')! < z.get('time')!, 'the flash panel must sit behind the time');
+  assert.ok(z.get('bar')! < z.get('time')!, 'the progress rule must sit behind the time');
+
+  // Order-independent: shuffling the array must not change what is on top.
+  const shuffled = [...payload.elements].reverse();
+  const topmost = shuffled.reduce((a, b) => ((b.z_index ?? 0) > (a.z_index ?? 0) ? b : a));
+  assert.equal(topmost.id, 'time');
+}
+
 console.log('render: ok');
+
+// The tick loop aligns to the wall clock so a new second is drawn on the
+// second, not up to TICK_MS after it.
+{
+  // Landing mid-period waits only the remainder.
+  assert.equal(msUntilNextTick(200, 1_000_000_050), 150);
+  assert.equal(msUntilNextTick(200, 1_000_000_199), 1);
+
+  // Exactly on a boundary waits a whole period rather than firing again now.
+  assert.equal(msUntilNextTick(200, 1_000_000_000), 200);
+
+  // Whatever the starting offset, ticks converge onto multiples of the period,
+  // and because 200 divides 1000 one of them lands on the second itself.
+  let now = 1_700_000_000_123;
+  const landings: number[] = [];
+  for (let i = 0; i < 12; i++) {
+    now += msUntilNextTick(200, now);
+    landings.push(now % 200);
+  }
+  assert.deepEqual(new Set(landings), new Set([0]), 'every tick should land on a period boundary');
+  assert.ok(landings.length > 0 && (now % 1000) % 200 === 0);
+}
+
+console.log('tick alignment: ok');
 
 // 7. Chime is well-formed 16-bit PCM.
 const chime = generateChime();

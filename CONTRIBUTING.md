@@ -64,6 +64,91 @@ If you learn something new about the device, add it to `docs/busy-bar-api.md`
 with its status. Negative results are welcome — "I tried X and it did nothing"
 saves the next person real time.
 
+## Regenerating the demo
+
+`docs/demo.gif` is not a mockup. It is real device output, photographed off the
+panel and then projected onto the manufacturer's own 3D model of the Bar, so the
+pixels in the GIF are the pixels the hardware lit.
+
+Two steps, and the first needs a device:
+
+```bash
+# 0. The animated 8-bit backdrop, one PNG per output frame. Deterministic.
+python3 tools/make-backdrop.py --out .js-build/backdrop --frames 59
+
+# 1. Photograph the panel. Builds each frame with this project's real render.ts,
+#    POSTs it, then reads it back with GET /api/screen?display=0. Also writes
+#    frames.json, describing what a capture cannot show: LED colour, the START
+#    pad going down, the wheel turning, and the caption for each beat.
+node tools/capture-frames.mjs --host <bar> --out .js-build/frames
+
+# 2. Project those frames onto the model and render.
+blender -b -noaudio -P tools/render-demo.py -- \
+    --fbx <path>/busy-bar.fbx --frames .js-build/frames \
+    --backdrop .js-build/backdrop --out .js-build/render
+
+# 3. Add the header strip and caption bar. Needs Pillow.
+python3 tools/compose-demo.py --render .js-build/render \
+    --frames .js-build/frames --out .js-build/composed
+
+# 4. Assemble.
+ffmpeg -y -framerate 6 -i .js-build/composed/c_%03d.png \
+  -vf 'scale=680:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=full[p];[b][p]paletteuse=dither=none' \
+  -loop 0 docs/demo.gif
+```
+
+Only step 3 needs a package (`pip install pillow`), and only for text rendering.
+Everything else is Blender, ffmpeg and the standard library, so nothing reaches
+the shipped package.
+
+Add `--test` to the Blender step to render a single frame, which is the fast way
+to check framing before committing to all of them.
+
+Two details worth knowing if you change it:
+
+- **The panel quad is 4.5:1, which is exactly 72×16**, so captures map onto it
+  with no distortion. The script replaces the model's imported UVs — they point
+  into the body's texture atlas — with a clean 0–1 projection, and derives the
+  orientation from world axes. Get the U direction backwards and the digits
+  render mirrored, which is obvious immediately.
+- **The mode lever is rotated to CUSTOM**, which is the position this app
+  requires. `-30°` was picked by rendering the printed guide from directly above
+  and checking where the tip lands: the model's rest position is OFF, `-20°`
+  falls between CUSTOM and OFF, and `-40°` overshoots toward BUSY.
+- **Lights cast no shadows.** The key was drawing a hard edge across the scroll
+  wheel, which on a white product reads as a smudge rather than as form.
+- **The backdrop animates**, so every output frame is rendered rather than held
+  frames being copied. The rainbow waves and the dolphin bobs; the starfield is
+  static, which is why `palettegen=stats_mode=full` with `dither=none` compresses
+  better than per-frame palettes, and keeps the pixel art crisp besides.
+- **The dolphin is Flipper's, under GPL-3.0.** See `tools/vendor/README.md`:
+  `docs/demo.gif` therefore carries GPL-3.0, unlike the rest of this MIT project.
+  The sky around him is original work.
+- **The scroll wheel turns about world Z**, not its own local axis — the imported
+  parts carry their own rotations, so adding to a local euler tips the dial out
+  of plane instead of spinning it. The wheel angle also persists once set; a
+  physical dial does not spring back.
+- **The camera is framed to match `docs/controls.jpg`**, looking down about 32°
+  so the mode lever, START pad and scroll wheel all read while the front panel
+  stays legible. A near-level camera compresses the top face to a sliver and
+  loses the controls the demo exists to show.
+
+### Getting the model
+
+The model is BUSY's own, and they publish it themselves at
+**<https://busy.app/pages/downloads>** — the *FBX + Textures* package (51 MB),
+alongside STEP and GLB versions of the same model. Download your own copy and
+point `--fbx` at it.
+
+It is not redistributed here, deliberately. The downloads page licenses the
+**firmware sources** under GPLv2, but states no licence for the 3D assets, and
+the site footer reads "Designed by Flipper FZCO. © 2026. All rights reserved."
+So they are published for people to use in 3D software, which is exactly what
+this pipeline does — but absent an explicit grant, this repo links to the
+download rather than vendoring a copy. If BUSY later states a licence that
+allows redistribution, committing the model would make the demo reproducible
+without a manual download.
+
 ## Pull requests
 
 - Keep the change focused. Unrelated fixes are easier to review separately.
@@ -86,6 +171,19 @@ and 24 matters because type stripping is experimental on 22 and built in from
 
 Nothing in CI needs a BUSY Bar.
 
+### The changelog is part of the release
+
+`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/), and the
+release workflow **reads it**: the GitHub release notes for `vX.Y.Z` are that
+file's `[X.Y.Z]` section, and the run fails if the section is missing. That check
+happens before the tag is pushed, so a forgotten entry costs nothing — discard
+the run and add one.
+
+Put user-visible changes under `## [Unreleased]` as you make them, then rename
+that heading to the version when you release. Link to commits, tags or issues
+wherever a change has a specific cause worth pointing at; the existing entries
+show the style.
+
 ### Cutting a release
 
 **Releases happen entirely in CI — nothing is built, tagged or published from a
@@ -104,8 +202,9 @@ laptop.** Go to **Actions → Release → Run workflow**, choose `patch`, `minor
    `--version`, then starts it and fails the release if it dies on a missing
    module, a syntax error or a bad config rather than on the network. Something
    that cannot start should never reach a release page.
-6. Publishes the GitHub release with the tarball and a `.sha256`.
-7. Publishes to npm, with provenance.
+6. Publishes to npm, with provenance.
+7. Publishes the GitHub release with the tarball, a `.sha256`, and the release
+   notes taken from `CHANGELOG.md`.
 
 Pushing a `v*` tag by hand runs the same job from step 3, for anyone who
 prefers that.

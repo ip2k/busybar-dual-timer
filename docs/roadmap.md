@@ -72,9 +72,23 @@ Watch <https://docs.busy.app/bar/dev> for the SDK.
   a built-in BUSY timer with profile slots; mapping A and B onto two profiles
   might feel more native and would survive the widget process dying. Unknown how
   much control the API gives.
-- **Use `countdown` elements.** Would remove the per-second redraw entirely, at
-  the cost of font control. Worth a look if network chattiness ever matters, or
-  if the default countdown rendering turns out to look good.
+- **~~Adopt `z_index`.~~ Done in 1.1.0.** Draw order is stated rather than
+  implied by array order.
+
+- **~~Align the ticker to the second boundary.~~ Done in 1.1.0.** See
+  `msUntilNextTick` in `src/clock.ts`.
+
+- **Use `countdown` elements.** No longer speculative: the on-device port used
+  them and a demo run went from 99 requests to 7, because the firmware animates
+  the countdown itself. **But the API gives `countdown` no `font` field**, so it
+  renders 5 rows tall against 10 for `extra_large`, and the inverting alarm
+  cannot be expressed at all. Deliberately not adopted off-device, where the
+  traffic saving does not matter and the styling does. Revisit if BUSY add a
+  font field.
+
+- **Adopt `display_until`** so the firmware retires the DONE panel instead of
+  `expiry.holdSeconds` tracking it, and **`element_ids` on `DELETE`** for
+  selective removal. Both arrived in API 27.5.0. See `docs/busy-bar-api.md`.
 - **Dial speed ramping — tried, then removed.** The step used to multiply when
   the dial spun fast. On hardware it felt unpredictable and not especially
   responsive, and for the timers people actually set, one detent per minute is

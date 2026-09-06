@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 import { BusyBarClient, InputStream, safeText } from './api.ts';
 import { loadAudioForDevice } from './audio-file.ts';
-import { monotonicMs } from './clock.ts';
+import { monotonicMs, msUntilNextTick } from './clock.ts';
 import { generateChime, tonesForSlot } from './chime.ts';
 import {
   configSearchPaths,
@@ -20,6 +20,14 @@ import { buildPayload, signature, formatDuration } from './render.ts';
 import { DualTimer } from './timers.ts';
 import type { InputEvent } from './proto.ts';
 
+/**
+ * How often the tick loop runs.
+ *
+ * It divides 1000 exactly, which matters: `scheduleTick` aligns each tick to a
+ * multiple of this past the wall-clock second, so one tick always lands on the
+ * second boundary itself. Change it to something that does not divide 1000 and
+ * the displayed seconds start drifting within their own second again.
+ */
 const TICK_MS = 200;
 
 /** `chime.wav` -> `chime-2.wav`, keeping the extension the device expects. */
@@ -98,7 +106,7 @@ class DualTimerApp {
     }
 
     this.stream.start();
-    this.ticker = setInterval(() => void this.tick(), TICK_MS);
+    this.scheduleTick();
     await this.render(true);
 
     const [a, b] = this.config.timers;
@@ -111,7 +119,7 @@ class DualTimerApp {
   }
 
   async stop(): Promise<void> {
-    if (this.ticker) clearInterval(this.ticker);
+    if (this.ticker) clearTimeout(this.ticker);
     this.ticker = null;
     this.gestures.dispose();
     this.stream.stop();
@@ -292,6 +300,28 @@ class DualTimerApp {
     this.timer.acknowledgeExpiry();
     this.expiryStartedAt = null;
     this.soundsPlayed = 0;
+  }
+
+  /**
+   * Run the next tick, aligned to the wall clock rather than to an interval.
+   *
+   * A plain `setInterval(TICK_MS)` starts wherever the process happened to
+   * start, so the tick that redraws a new second can land anywhere inside it —
+   * and because timers drift, *where* it lands wanders over a long run. The
+   * displayed second then changes up to `TICK_MS` late, visibly out of step
+   * with any other clock in the room.
+   *
+   * Sleeping to the next multiple of `TICK_MS` past the second instead means a
+   * tick always lands on the boundary, and stays there: each delay is computed
+   * from the clock, so a slow tick is absorbed rather than accumulated.
+   */
+  private scheduleTick(): void {
+    const delay = msUntilNextTick(TICK_MS, Date.now());
+    this.ticker = setTimeout(() => {
+      void this.tick().finally(() => {
+        if (this.ticker !== null) this.scheduleTick();
+      });
+    }, delay);
   }
 
   private async tick(): Promise<void> {

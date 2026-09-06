@@ -61,10 +61,14 @@ function timeFont(text: string): 'extra_large' | 'condensed' {
 const INVISIBLE = '#00000000';
 
 /**
- * Every frame emits the same four elements in the same order, whatever the
- * state. Unused ones go transparent rather than being omitted.
+ * Every frame emits the same four elements, whatever the state. Unused ones go
+ * transparent rather than being omitted.
  *
- * `flash` is first so it sits behind the text.
+ * Layering is stated with `z_index` rather than implied by array order. The
+ * firmware falls back to array order when it is absent, which worked, but made
+ * the stacking depend on the order this function happens to build its list —
+ * the `flash` panel had to stay first or it would cover the time. Saying it
+ * outright means a reordering here cannot silently change what is visible.
  */
 function elementsFor(state: RenderState): DisplayElement[] {
   const { snapshot, blinkOn } = state;
@@ -96,6 +100,7 @@ function elementsFor(state: RenderState): DisplayElement[] {
     {
       id: 'flash',
       type: 'rectangle',
+      z_index: 1,
       x: 0,
       y: 0,
       width: WIDTH,
@@ -108,6 +113,7 @@ function elementsFor(state: RenderState): DisplayElement[] {
     {
       id: 'bar',
       type: 'rectangle',
+      z_index: 2,
       x: 0,
       y: HEIGHT - 1,
       // Never zero-width: keep the element real and hide it with alpha instead.
@@ -121,6 +127,7 @@ function elementsFor(state: RenderState): DisplayElement[] {
     {
       id: 'label',
       type: 'text',
+      z_index: 3,
       x: 1,
       y: 1,
       align: 'top_left',
@@ -132,6 +139,7 @@ function elementsFor(state: RenderState): DisplayElement[] {
     {
       id: 'time',
       type: 'text',
+      z_index: 4,
       x: expired ? 36 : 39,
       y: expired ? 8 : 7,
       align: 'center',

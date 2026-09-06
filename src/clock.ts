@@ -14,3 +14,20 @@
 export function monotonicMs(): number {
   return performance.now();
 }
+
+/**
+ * Milliseconds to wait so the next tick lands on a multiple of `tickMs` past
+ * the wall-clock second.
+ *
+ * `setInterval` fires relative to whenever it was started, so the tick that
+ * redraws a new second sits at an arbitrary offset inside it — and drifts.
+ * Computing each delay from the clock instead keeps ticks on the boundary and
+ * absorbs a slow tick rather than accumulating it.
+ *
+ * Always returns at least 1ms: landing exactly on a boundary should wait a full
+ * period, not schedule a zero-delay tick that fires again immediately.
+ */
+export function msUntilNextTick(tickMs: number, now: number): number {
+  const remainder = now % tickMs;
+  return remainder === 0 ? tickMs : tickMs - remainder;
+}
