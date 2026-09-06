@@ -175,10 +175,10 @@ function probeModules(): void {
  */
 let drawInFlight = false;
 let drawsSkipped = 0;
-function draw(payload: DrawPayload, report = false): void {
+function draw(payload: DrawPayload, report = false): boolean {
   if (drawInFlight) {
     drawsSkipped++;
-    return;
+    return false;
   }
   drawInFlight = true;
   fetch(
@@ -205,15 +205,38 @@ function draw(payload: DrawPayload, report = false): void {
       drawInFlight = false;
       console.error('[draw] failed:', String(e));
     });
+  return true;
 }
 
-function clearDisplay(): void {
+/**
+ * Clear the panel, then stop.
+ *
+ * The order matters and is not obvious. `js_runner.c` tears the app down when
+ * the script runs out of work, and teardown calls `abort_fetches()` on anything
+ * still in flight. Ending the script with an outstanding request therefore
+ * races the abort path — and on the evidence of a breadcrumb reading
+ * `expired-2` seven seconds before a reboot, that race is what killed the
+ * device. So the interval, which is the only thing keeping the runtime alive,
+ * is cleared *inside* the response handler rather than before the request.
+ */
+// `ReturnType<typeof setInterval>` rather than `number`, because this build has
+// to pull in @types/node to typecheck (see docs/js-port.md) and there
+// setInterval returns a Timeout. On the device it is a plain number.
+type IntervalHandle = ReturnType<typeof setInterval>;
+
+function clearDisplayThenStop(handle: IntervalHandle, onStopped: () => void): void {
   fetch(new Request(`${BASE}/api/display/draw?application_name=${APP_ID}`, { method: 'DELETE' }))
     // Consume the body even here, where the result is of no interest: an
     // unread body leaks the request regardless of whether anyone wanted it.
     .then((response: { text: () => Promise<string> }) => response.text())
-    .catch(() => {
-      /* nothing useful to do */
+    .then(() => {
+      clearInterval(handle);
+      onStopped();
+    })
+    .catch((e: unknown) => {
+      clearInterval(handle);
+      console.error('[dual-timer] clear failed:', String(e));
+      onStopped();
     });
 }
 
@@ -270,6 +293,7 @@ function main(): void {
   let finished = 0;
   let alarmStartedAt = 0;
   let ledFired = false;
+  let shuttingDown = false;
   let lastInverted: boolean | null = null;
   let firstDrawReported = false;
 
@@ -281,6 +305,7 @@ function main(): void {
   console.info('[dual-timer] started A (no input binding exists, so this is automatic)');
 
   const handle = setInterval(() => {
+    if (shuttingDown) return;
     ticks++;
 
     if (timer.checkExpiry()) {
@@ -298,8 +323,12 @@ function main(): void {
     // A latch, not a time window. The window version fired twice whenever two
     // ticks landed inside it, which restarts the firmware's one-shot LED
     // notification instead of leaving it to run.
-    const firstAlarmTick = expired && !ledFired;
-    if (firstAlarmTick) ledFired = true;
+    // Do NOT latch here. The LED colour rides on exactly one frame, and frames
+    // are dropped under backpressure — so latching on intent rather than on
+    // delivery is how the single frame carrying the LED gets silently thrown
+    // away, which is precisely what happened on the device. The latch is set
+    // below, only once the frame has actually been sent.
+    const wantsLed = expired && !ledFired;
 
     // Blink every other tick, so a full invert/normal cycle is 800ms — slow
     // enough to be seen across a room rather than read as a flicker.
@@ -319,19 +348,21 @@ function main(): void {
         // Fire the firmware's LED notification preset on the tick the timer
         // expires. It is a one-shot three-blink, so re-sending it every frame
         // would restart it constantly; once per expiry is the whole behaviour.
-        ledBlink: firstAlarmTick,
+        ledBlink: wantsLed,
       },
     );
 
     const next = signature(payload);
-    if (next !== lastSignature) {
-      lastSignature = next;
-      draw(payload, !firstDrawReported);
-      firstDrawReported = true;
-    }
-
-    if (firstAlarmTick) {
-      console.info('[dual-timer] LED notification requested, colour', snapshot.ledColor);
+    if (next !== lastSignature || wantsLed) {
+      const sent = draw(payload, !firstDrawReported);
+      if (sent) {
+        lastSignature = next;
+        firstDrawReported = true;
+        if (wantsLed) {
+          ledFired = true;
+          console.info('[dual-timer] LED frame sent, colour', snapshot.ledColor);
+        }
+      }
     }
 
     // First expiry: let the alarm run, then move to B. Second: hold, then stop.
@@ -341,11 +372,12 @@ function main(): void {
         timer.toggle();
         lastInverted = null;
         console.info('[dual-timer] switched to B and started it');
-      } else {
-        clearInterval(handle);
-        clearDisplay();
-        mark('complete');
-        console.info('[dual-timer] done after', ticks, 'ticks; both timers ran to expiry');
+      } else if (!shuttingDown) {
+        shuttingDown = true;
+        clearDisplayThenStop(handle, () => {
+          mark('complete');
+          console.info('[dual-timer] done after', ticks, 'ticks; both timers ran to expiry');
+        });
       }
     }
   }, TICK_MS);

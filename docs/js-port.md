@@ -252,6 +252,50 @@ second.
 It cannot say anything about firmware memory, threads or timing. Those still
 need the device. But a bundle that fails here has no business being installed.
 
+### Do not end the script with a request in flight
+
+`js_runner.c` tears the app down once the script runs out of work, and teardown
+calls `abort_fetches()` on anything still outstanding. Ending while a request is
+in flight races that abort path.
+
+The evidence: a breadcrumb reading `expired-2`, written seven seconds before a
+reboot — which is exactly when the shutdown path ran `clearInterval` followed by
+a `DELETE`, then let the script end. The interval is the only thing keeping the
+runtime alive, so clearing it first meant the script finished with the DELETE
+still outstanding.
+
+The fix is to clear the interval *inside* the final response handler, so the
+script only runs dry once nothing is pending.
+
+### One-shot payloads must not ride on a droppable frame
+
+Backpressure means frames are dropped (see above), and `led_notification_color`
+travels on exactly one frame. Latching "LED sent" on *intent* rather than on
+*delivery* means the single frame carrying it is silently discarded whenever a
+draw happens to be in flight — which, at these latencies, is often.
+
+This is what produced "no LED activity" on the device while the log cheerfully
+reported the notification as requested. The latch now moves only once `draw()`
+confirms the frame actually went out, and the frame is sent even when the
+rendered signature is unchanged.
+
+### `CountdownElement` removes the redraw problem entirely
+
+The panel visibly jumped several seconds at a time on the device, because a
+guarded draw loop cannot sustain much better than about one frame per second.
+
+The API has a purpose-built answer that this project has never used. A
+`CountdownElement` takes a **target Unix timestamp**, a direction
+(`time_left` / `time_since`) and an hours policy, and the firmware renders the
+ticking clock itself. One request sets up a countdown that then runs without any
+further traffic.
+
+For an on-device port this is close to decisive: it removes the per-second
+redraw, and with it most of the fetch pressure that caused every problem
+documented above. The cost is losing control of the font and the layout, which
+is why `docs/roadmap.md` still lists it as an open question rather than a plan.
+It is equally applicable to the off-device client.
+
 ### Modules do not resolve, so the app must be one file
 
 `js_runner.c` parses the entry script with `JERRY_PARSE_MODULE` and then calls
