@@ -454,11 +454,36 @@ Per `CONTRIBUTING.md`, claims here are marked for how they were established.
 | `timers.ts` and `render.ts` run unmodified | **verified** — see below |
 | No `performance`, no monotonic clock | **pending** — the first probe was wrong; see below |
 | Each `fetch` starts a 10 KiB-stack thread, uncapped | **verified in source** — `js_fetch.c`; consistent with all measured latencies |
-| Unserialised draws destabilise the device | **observed** — a reboot mid-run; cause not provable, mechanism documented |
+| Request volume, not any single call, is what destabilises it | **verified** — see below |
+| `countdown` elements work on device | **verified** — a full run at 7 requests |
 
-### The run
+### The result that settles it
 
-Launched from the APPS menu on 2026-09-06, firmware 1.2.3:
+Four consecutive runs ended with the device restarting. Rewriting the demo
+around `countdown` elements — which took a run from **99 requests to 7** —
+produced a clean pass on the first attempt:
+
+```
+started A -> drew (countdown element)
+expired A after 8.1s (8s timer) -> DONE + LED, chime
+switched to B -> drew
+expired B after 5.5s (5s timer) -> DONE + LED, chime
+done; both timers ran to expiry
+```
+
+`boot_time` was identical before and after (`1788683936`) — **the device did not
+restart** — and the breadcrumb read `complete`.
+
+Nothing about the individual calls changed. Only their number did. So the
+instability was never one bad request; it was volume, against a runtime that
+starts a 10 KiB-stack thread per in-flight fetch. That is the finding to carry
+forward: **on this runtime, request count is a resource budget, not a
+performance detail.**
+
+### The earlier run
+
+Launched from the APPS menu on 2026-09-06, firmware 1.2.3, before the countdown
+rewrite:
 
 | Event | Device ms | Elapsed |
 | --- | --- | --- |
