@@ -17,7 +17,7 @@ frame N always looks the same.
 Standard library only. PNG is a container around a zlib stream, and the point of
 this pipeline is that it reproduces without a package install.
 """
-import sys, os, zlib, struct, random, math
+import sys, os, json, zlib, struct, random, math
 
 W, H, SCALE = 224, 126, 6
 SEED = 20260906
@@ -88,6 +88,85 @@ for _ in range(340):
         put(x, y, (215, 220, 245))
     else:
         blend(x, y, (170, 180, 220), 0.5 + v * 0.4)
+
+# ------------------------------------------------------------------ font ---
+
+# A 3x5 pixel font, drawn to sit beside the dolphin without looking like it came
+# from somewhere else. Uppercase only, which is all the balloons need.
+GLYPHS = {
+    "A": "###|#.#|###|#.#|#.#", "B": "##.|#.#|##.|#.#|##.", "C": ".##|#..|#..|#..|.##",
+    "D": "##.|#.#|#.#|#.#|##.", "E": "###|#..|##.|#..|###", "F": "###|#..|##.|#..|#..",
+    "G": ".##|#..|#.#|#.#|.##", "H": "#.#|#.#|###|#.#|#.#", "I": "###|.#.|.#.|.#.|###",
+    "J": "..#|..#|..#|#.#|.#.", "K": "#.#|#.#|##.|#.#|#.#", "L": "#..|#..|#..|#..|###",
+    "M": "#.#|###|###|#.#|#.#", "N": "#.#|##.|###|.##|#.#", "O": ".#.|#.#|#.#|#.#|.#.",
+    "P": "##.|#.#|##.|#..|#..", "Q": ".#.|#.#|#.#|##.|.##", "R": "##.|#.#|##.|#.#|#.#",
+    "S": ".##|#..|.#.|..#|##.", "T": "###|.#.|.#.|.#.|.#.", "U": "#.#|#.#|#.#|#.#|.##",
+    "V": "#.#|#.#|#.#|#.#|.#.", "W": "#.#|#.#|###|###|#.#", "X": "#.#|#.#|.#.|#.#|#.#",
+    "Y": "#.#|#.#|.#.|.#.|.#.", "Z": "###|..#|.#.|#..|###",
+    "0": ".#.|#.#|#.#|#.#|.#.", "1": ".#.|##.|.#.|.#.|###", "2": "##.|..#|.#.|#..|###",
+    "3": "##.|..#|.#.|..#|##.", "4": "#.#|#.#|###|..#|..#", "5": "###|#..|##.|..#|##.",
+    "6": ".##|#..|##.|#.#|.#.", "7": "###|..#|.#.|.#.|.#.", "8": ".#.|#.#|.#.|#.#|.#.",
+    "9": ".#.|#.#|.##|..#|##.",
+    "!": ".#.|.#.|.#.|...|.#.", "+": "...|.#.|###|.#.|...", "?": "##.|..#|.#.|...|.#.",
+    "-": "...|...|###|...|...", " ": "...|...|...|...|...",
+}
+GLYPH_W, GLYPH_H, TRACK = 3, 5, 1
+
+INK = (26, 22, 34)      # the dolphin's outline colour
+PAPER = (245, 248, 255) # and his belly
+
+
+def text_width(text):
+    return len(text) * (GLYPH_W + TRACK) - TRACK
+
+
+def draw_text(x, y, text, colour):
+    for i, ch in enumerate(text.upper()):
+        rows = GLYPHS.get(ch, GLYPHS["?"]).split("|")
+        for gy, row in enumerate(rows):
+            for gx, cell in enumerate(row):
+                if cell == "#":
+                    put(x + i * (GLYPH_W + TRACK) + gx, y + gy, colour)
+
+
+def draw_balloon(text, tip_x, tip_y):
+    """
+    A speech balloon in the dolphin's own style: pale fill, dark outline, with a
+    tail running back to `tip_x, tip_y` -- his snout.
+
+    Placed *beside* him rather than above. There are only about ten pixels of sky
+    over his head at this scale, and a balloon needs eleven plus a tail, so an
+    overhead one is clipped by the top of the frame.
+    """
+    w = text_width(text) + 6
+    h = GLYPH_H + 6
+    x0 = tip_x + 8
+    y0 = tip_y - h // 2
+
+    # Keep it inside the sky whatever the text length or wherever he is bobbing.
+    x0 = max(1, min(x0, W - w - 2))
+    y0 = max(2, min(y0, H - h - 2))
+
+    for yy in range(y0, y0 + h):
+        for xx in range(x0, x0 + w):
+            # Clip the corners by a pixel so the box reads as rounded.
+            if (xx in (x0, x0 + w - 1)) and (yy in (y0, y0 + h - 1)):
+                continue
+            edge = xx in (x0, x0 + w - 1) or yy in (y0, y0 + h - 1)
+            put(xx, yy, INK if edge else PAPER)
+
+    # The tail: a stepped wedge from the balloon's left edge back to the snout,
+    # outlined above and below so it reads against the sky.
+    mid = y0 + h // 2
+    for step in range(x0 - tip_x):
+        tx = x0 - 1 - step
+        ty = mid + step // 2
+        put(tx, ty, PAPER)
+        put(tx, ty - 1, INK)
+        put(tx, ty + 1, INK)
+
+    draw_text(x0 + 3, y0 + 3, text, INK)
+
 
 # --------------------------------------------------------------- dolphin ---
 
@@ -165,15 +244,16 @@ RAINBOW = [(255, 60, 60), (255, 150, 40), (255, 225, 60),
 BASE = list(px)   # the sky, without anything moving on it
 
 
-def frame(n, total):
-    """Draw frame `n`: the dolphin bobs, and the rainbow behind him waves."""
+def frame(n, total, say=None):
+    """Draw frame `n`: the dolphin bobs, the rainbow waves, and he may speak."""
     global px
     px = list(BASE)
 
     phase = n * 0.55
     # High enough to clear the device, which occupies the middle band of the
     # frame -- at mid-height he flies straight behind it and is never seen.
-    dx, dy = 152, 20
+    # Left of centre, leaving the top-right clear for a speech balloon.
+    dx, dy = 138, 22
     bob = round(2.2 * math.sin(phase))
 
     # The wake, drawn first so the dolphin sits on top of it. Each column's
@@ -196,6 +276,10 @@ def frame(n, total):
             elif kind == "fill":
                 put(dx + i - SW // 2, dy + bob + j - SH // 2, (245, 248, 255))
 
+    if say:
+        # The tail lands on his snout, at the front (right) of the sprite.
+        draw_balloon(say, dx + SW // 2 - 2, dy + bob - 3)
+
     # Scale up with nearest neighbour: no smoothing, the pixels stay pixels.
     out = [(0, 0, 0)] * (W * SCALE * H * SCALE)
     for y in range(H * SCALE):
@@ -209,9 +293,43 @@ def arg(name, default):
     return sys.argv[sys.argv.index(name) + 1] if name in sys.argv else default
 
 
+# What he says, and when. Keyed off the caption chips in the capture manifest,
+# so a balloon appears exactly when the demo says an input happened -- press the
+# wheel and he reacts on the same frame the caption changes.
+# He names the physical action, not its effect -- the caption bar underneath
+# already explains what the action does. "STOP!" is here for a pause beat, which
+# the current sequence does not have.
+SAYS = {"START": "START!", "WHEEL": "SPIN!", "PRESS": "PRESS!", "STOP": "STOP!"}
+SAY_FRAMES = 3  # about a second at 3fps
+
+
+def balloon_timeline(manifest_path, total):
+    """One entry per output frame: what the dolphin is saying, or None."""
+    says = [None] * total
+    if not manifest_path or not os.path.exists(manifest_path):
+        return says
+
+    with open(manifest_path) as fh:
+        manifest = json.load(fh)
+
+    n, previous = 0, None
+    for entry in manifest:
+        chip = entry.get("chip")
+        if chip and chip != previous and chip in SAYS:
+            for k in range(n, min(n + SAY_FRAMES, total)):
+                says[k] = SAYS[chip]
+        if chip:
+            previous = chip
+        n += max(1, int(entry.get("hold", 1)))
+    return says
+
+
 OUT = arg("--out", "docs/backdrop")
+MANIFEST = arg("--manifest", None)
 TOTAL = int(arg("--frames", 59))
 os.makedirs(OUT, exist_ok=True)
+says = balloon_timeline(MANIFEST, TOTAL)
 for n in range(TOTAL):
-    png(frame(n, TOTAL), W * SCALE, H * SCALE, os.path.join(OUT, f"bg_{n:03d}.png"))
-print(f"wrote {TOTAL} frames to {OUT} ({W * SCALE}x{H * SCALE})")
+    png(frame(n, TOTAL, says[n]), W * SCALE, H * SCALE, os.path.join(OUT, f"bg_{n:03d}.png"))
+spoken = sum(1 for x in says if x)
+print(f"wrote {TOTAL} frames to {OUT} ({W * SCALE}x{H * SCALE}); {spoken} with a balloon")
