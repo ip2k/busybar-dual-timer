@@ -15,7 +15,6 @@
  * over HTTP with `tools/js-app.mjs logs` — there is no serial cable involved.
  */
 import { DualTimer } from '../../src/timers.ts';
-import { buildPayload, signature } from '../../src/render.ts';
 import type { DrawPayload } from '../../src/api.ts';
 import type { TimerConfig } from '../../src/config.ts';
 
@@ -242,24 +241,12 @@ function clearDisplayThenStop(handle: IntervalHandle, onStopped: () => void): vo
 
 /* -------------------------------------------------------------------- run */
 
-/** Shortened from the real defaults so a full pass takes well under a minute. */
 const TIMERS: [TimerConfig, TimerConfig] = [
   { label: 'A', seconds: 8, color: '#00E5FFFF', ledColor: '#00E5FFFF' },
   { label: 'B', seconds: 5, color: '#39FF14FF', ledColor: '#39FF14FF' },
 ];
 
-/**
- * How long to hold the inverting alarm. Measured in milliseconds, not ticks:
- * the first run counted 40 ticks expecting 8 seconds and got 32, because a
- * "200ms" interval actually fires roughly every 800ms on this runtime.
- */
 const ALARM_MS = 6000;
-
-/**
- * A device sound, so nothing has to be uploaded first. `POST /api/audio/play`
- * answers `200 {"result":"OK"}` even for files that do not exist, so its reply
- * proves nothing — see trap #6 in CLAUDE.md. Only a listener can confirm this.
- */
 const STOCK_SOUND = 'shared/volume_change.snd';
 
 function playChime(): void {
@@ -278,6 +265,95 @@ function playChime(): void {
     });
 }
 
+/**
+ * Draw the running timer as a firmware-rendered `countdown` element.
+ *
+ * This is the whole point of the experiment. `render.ts` redraws the panel on
+ * every tick, which is right when a laptop is doing the drawing and wrong here:
+ * each request costs a thread, frames get dropped under backpressure, and the
+ * panel visibly jumps whole seconds. A `countdown` element instead takes the
+ * Unix timestamp it is counting to, and the firmware animates it with **no
+ * further traffic at all**.
+ *
+ * So a run costs a handful of requests rather than one per tick.
+ *
+ * The element type is declared inline because `src/api.ts` does not model
+ * `countdown` yet — the off-device client has never used it. Adding it there
+ * would benefit both, and is noted in docs/roadmap.md.
+ */
+function drawRunning(label: string, color: string, endsAtMs: number, ledColor?: string): boolean {
+  const payload = {
+    application_name: APP_ID,
+    priority: 95,
+    elements: [
+      {
+        id: 'label',
+        type: 'text',
+        x: 1,
+        y: 1,
+        align: 'top_left',
+        display: 'front',
+        text: label,
+        font: 'small',
+        color,
+        z_index: 1,
+      },
+      {
+        id: 'time',
+        type: 'countdown',
+        x: 39,
+        y: 7,
+        align: 'center',
+        display: 'front',
+        // Seconds, and a string: the API is specific about both.
+        timestamp: String(Math.round(endsAtMs / 1000)),
+        direction: 'time_left',
+        show_hours: 'when_non_zero',
+        color,
+        z_index: 2,
+      },
+    ],
+  } as unknown as DrawPayload;
+  if (ledColor) (payload as { led_notification_color?: string }).led_notification_color = ledColor;
+  return draw(payload, false);
+}
+
+/** The static "DONE" panel. Nothing animates, so one request holds it. */
+function drawDone(label: string, color: string, ledColor?: string): boolean {
+  const payload = {
+    application_name: APP_ID,
+    priority: 95,
+    elements: [
+      {
+        id: 'label',
+        type: 'text',
+        x: 1,
+        y: 1,
+        align: 'top_left',
+        display: 'front',
+        text: '',
+        font: 'small',
+        color,
+        z_index: 1,
+      },
+      {
+        id: 'time',
+        type: 'text',
+        x: 36,
+        y: 8,
+        align: 'center',
+        display: 'front',
+        text: `${label} DONE`,
+        font: 'bold',
+        color,
+        z_index: 2,
+      },
+    ],
+  } as unknown as DrawPayload;
+  if (ledColor) (payload as { led_notification_color?: string }).led_notification_color = ledColor;
+  return draw(payload, false);
+}
+
 function main(): void {
   mark('start');
   console.info('[dual-timer] on-device probe starting, app id', APP_ID);
@@ -288,99 +364,62 @@ function main(): void {
   mark('probes-done');
 
   const timer = new DualTimer(TIMERS);
-  let lastSignature = '';
-  let ticks = 0;
   let finished = 0;
   let alarmStartedAt = 0;
-  let ledFired = false;
+  let drawnPhase = '';
   let shuttingDown = false;
-  let lastInverted: boolean | null = null;
-  let firstDrawReported = false;
 
-  // Auto-start, because there is no way to read the buttons: the runtime has no
-  // WebSocket and the HTTP API only *sends* input, never reports it. This is
-  // the single blocker documented in docs/js-port.md.
-  mark('timer-started');
   timer.toggle();
+  mark('timer-started');
   console.info('[dual-timer] started A (no input binding exists, so this is automatic)');
 
-  const handle = setInterval(() => {
+  const handle: IntervalHandle = setInterval(() => {
     if (shuttingDown) return;
-    ticks++;
 
-    if (timer.checkExpiry()) {
+    const justExpired = timer.checkExpiry();
+    if (justExpired) {
       finished++;
       alarmStartedAt = Date.now();
       mark('expired-' + String(finished));
-      ledFired = false;
       console.info('[dual-timer] expired:', timer.snapshot().label);
       playChime();
     }
 
     const snapshot = timer.snapshot();
     const expired = snapshot.phase === 'expired';
-    const alarmElapsed = expired ? Date.now() - alarmStartedAt : 0;
-    // A latch, not a time window. The window version fired twice whenever two
-    // ticks landed inside it, which restarts the firmware's one-shot LED
-    // notification instead of leaving it to run.
-    // Do NOT latch here. The LED colour rides on exactly one frame, and frames
-    // are dropped under backpressure — so latching on intent rather than on
-    // delivery is how the single frame carrying the LED gets silently thrown
-    // away, which is precisely what happened on the device. The latch is set
-    // below, only once the frame has actually been sent.
-    const wantsLed = expired && !ledFired;
 
-    // Blink every other tick, so a full invert/normal cycle is 800ms — slow
-    // enough to be seen across a room rather than read as a flicker.
-    const blinkOn = Math.floor(ticks / 2) % 2 === 0;
-    const inverted = expired && blinkOn;
-
-    if (expired && inverted !== lastInverted) {
-      console.info('[dual-timer] alarm phase:', inverted ? 'INVERTED' : 'normal');
-      lastInverted = inverted;
-    }
-
-    const payload = buildPayload(
-      { snapshot, blinkOn, alarm: expired },
-      {
-        applicationName: APP_ID,
-        priority: 95,
-        // Fire the firmware's LED notification preset on the tick the timer
-        // expires. It is a one-shot three-blink, so re-sending it every frame
-        // would restart it constantly; once per expiry is the whole behaviour.
-        ledBlink: wantsLed,
-      },
-    );
-
-    const next = signature(payload);
-    if (next !== lastSignature || wantsLed) {
-      const sent = draw(payload, !firstDrawReported);
+    // Redraw only when the *phase* changes, never on a timer. While a countdown
+    // is running the firmware animates it for us, so there is nothing to send.
+    const phaseKey = `${snapshot.index}:${snapshot.phase}`;
+    if (phaseKey !== drawnPhase) {
+      const sent = expired
+        ? drawDone(snapshot.label, snapshot.color, snapshot.ledColor)
+        : drawRunning(
+            snapshot.label,
+            snapshot.color,
+            Date.now() + snapshot.remainingMs,
+            justExpired ? snapshot.ledColor : undefined,
+          );
       if (sent) {
-        lastSignature = next;
-        firstDrawReported = true;
-        if (wantsLed) {
-          ledFired = true;
-          console.info('[dual-timer] LED frame sent, colour', snapshot.ledColor);
-        }
+        drawnPhase = phaseKey;
+        console.info('[dual-timer] drew', phaseKey, expired ? '(DONE + LED)' : '(countdown element)');
       }
     }
 
-    // First expiry: let the alarm run, then move to B. Second: hold, then stop.
-    if (expired && alarmElapsed >= ALARM_MS) {
+    if (expired && Date.now() - alarmStartedAt >= ALARM_MS) {
       if (finished === 1) {
         timer.switchTimer();
         timer.toggle();
-        lastInverted = null;
         console.info('[dual-timer] switched to B and started it');
       } else if (!shuttingDown) {
         shuttingDown = true;
         clearDisplayThenStop(handle, () => {
           mark('complete');
-          console.info('[dual-timer] done after', ticks, 'ticks; both timers ran to expiry');
+          console.info('[dual-timer] done; both timers ran to expiry');
         });
       }
     }
-  }, TICK_MS);
+  }, 500);
 }
 
 try {

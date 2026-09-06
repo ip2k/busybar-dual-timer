@@ -86,9 +86,17 @@ See `docs/js-port.md`.
   a built-in BUSY timer with profile slots; mapping A and B onto two profiles
   might feel more native and would survive the widget process dying. Unknown how
   much control the API gives.
-- **Use `countdown` elements.** Would remove the per-second redraw entirely, at
-  the cost of font control. Worth a look if network chattiness ever matters, or
-  if the default countdown rendering turns out to look good.
+- **Use `countdown` elements.** No longer speculative. The on-device port used
+  them and a demo run went from **99 requests to 7**, because the firmware
+  animates the countdown itself and needs nothing further. The same saving is
+  available to the off-device client. Still costs font and layout control, so
+  the open question is only how it looks. `src/api.ts` does not model the
+  element type yet. See `docs/busy-bar-api.md`.
+
+- **Adopt `z_index` and `display_until`.** Both arrived in API 27.5.0.
+  `z_index` makes `render.ts`'s reliance on array order explicit; `display_until`
+  lets the firmware retire the "DONE" panel instead of `expiry.holdSeconds`
+  tracking it. See `docs/busy-bar-api.md`.
 - **Dial speed ramping — tried, then removed.** The step used to multiply when
   the dial spun fast. On hardware it felt unpredictable and not especially
   responsive, and for the timers people actually set, one detent per minute is
