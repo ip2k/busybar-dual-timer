@@ -663,6 +663,9 @@ are all in [docs/busy-bar-api.md](docs/busy-bar-api.md) and
   **This project deliberately uses none of them** — see
   [the ecosystem notes](docs/busy-bar-api.md#the-official-ecosystem-and-why-this-project-doesnt-use-it)
   for what they offer and why
+- [Downloads](https://busy.app/pages/downloads) — 3D models of the Bar (STEP, GLB,
+  and the FBX + textures package this repo's demo render uses), firmware sources,
+  and the developer libraries
 - [Protobuf schemas](https://github.com/busy-app/busybar-protobuf)
 - [Device firmware source](https://github.com/busy-app/busybar-firmware) — open source, and the definitive answer to most hardware questions
 - Your own Bar serves its spec at `http://<bar>/openapi.yaml` and rendered docs

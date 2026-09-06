@@ -102,8 +102,21 @@ Two details worth knowing if you change it:
   stays legible. A near-level camera compresses the top face to a sliver and
   loses the controls the demo exists to show.
 
-The model is BUSY's own, from their published FBX with its 4K PBR texture set.
-It is not redistributed here; point `--fbx` at your own copy.
+### Getting the model
+
+The model is BUSY's own, and they publish it themselves at
+**<https://busy.app/pages/downloads>** — the *FBX + Textures* package (51 MB),
+alongside STEP and GLB versions of the same model. Download your own copy and
+point `--fbx` at it.
+
+It is not redistributed here, deliberately. The downloads page licenses the
+**firmware sources** under GPLv2, but states no licence for the 3D assets, and
+the site footer reads "Designed by Flipper FZCO. © 2026. All rights reserved."
+So they are published for people to use in 3D software, which is exactly what
+this pipeline does — but absent an explicit grant, this repo links to the
+download rather than vendoring a copy. If BUSY later states a licence that
+allows redistribution, committing the model would make the demo reproducible
+without a manual download.
 
 ## Pull requests
 
