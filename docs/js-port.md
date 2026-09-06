@@ -81,6 +81,36 @@ The bindings the firmware adds are, in full:
 **That is the entire custom surface.** There is no display binding, no input
 binding, no audio binding and no filesystem binding.
 
+### What the device actually reports
+
+Read from the firmware source, then confirmed by running a probe on the device
+and reading its output back with `tools/js-app.mjs logs`:
+
+```
+present: console fetch Request setInterval setTimeout localStorage
+         Promise Date JSON Math Uint8Array DataView ArrayBuffer globalThis
+absent:  Headers Response WebSocket TextEncoder TextDecoder atob btoa
+         URL AbortController
+language: class padStart spread template arrow for-of Map
+          Number.isFinite toFixed   -- all ok
+dynamic import(): SyntaxError
+```
+
+Three of those are worth calling out.
+
+**`Headers` and `Response` exist but are not constructible.** `js_headers.c`
+and `js_fetch_body_methods.c` are real, and a response object does have
+`.json()`, `.text()` and `.status`. But neither is exposed as a global
+constructor, so you can build a `Request` and read a response, and that is all.
+
+**There is no base64 and no text encoding.** No `atob`, `btoa`, `TextEncoder`
+or `TextDecoder`. That matters more than it looks: uploading a sound means
+handing raw PCM to the API, and `GET /api/screen` returns base64. A port that
+wanted either would have to hand-roll the codec, on a 64 KiB heap.
+
+**Dynamic `import()` is a `SyntaxError`**, which confirms from the other
+direction what the NULL module resolver implies: one file, no exceptions.
+
 ### There is no privileged API — a JS app is an HTTP API client
 
 This is the single most important structural fact, and it is a pleasant
@@ -256,12 +286,41 @@ Per `CONTRIBUTING.md`, claims here are marked for how they were established.
 | `POST /api/log_dump` + `storage/read` returns console output | **verified** — dumped and read, including `[D]` level |
 | JS apps are gated on the `js_apps_enabled` flag file | **verified** — the APPS menu showed "Coming soon" until the file was created |
 | No input endpoint exists in the HTTP API | **verified** — full 1.2.3 OpenAPI searched |
-| No WebSocket binding in the runtime | **inferred** — read from the complete `js_runner` binding list |
-| No `performance`, no monotonic clock | **inferred** — same source; probed at runtime by the app |
-| Modules cannot resolve (NULL linker) | **inferred** — `jerry_module_link(script, NULL, NULL)` |
+| No WebSocket binding in the runtime | **verified** — `typeof WebSocket === 'undefined'` on the device |
+| No base64 / text-encoding globals | **verified** — same probe |
+| Dynamic `import()` unavailable | **verified** — throws `SyntaxError` |
+| Modules cannot resolve (NULL linker) | **inferred** — `jerry_module_link(script, NULL, NULL)`, consistent with the above |
 | BACK is consumed by the launcher | **inferred** — `js_app_launcher_scene_run.c` |
-| The bundle parses and runs on-device | **UNVERIFIED — needs a launch from the APPS menu** |
+| The bundle parses and runs on-device | **verified** — see below |
+| `timers.ts` and `render.ts` run unmodified | **verified** — see below |
+| No `performance`, no monotonic clock | **pending** — the first probe was wrong; see below |
 
-The last row is the one that matters. `js-app/src/main.ts` probes the runtime at
-startup and logs what it finds, so launching it once turns most of the
-*inferred* rows above into verified ones.
+### The run
+
+Launched from the APPS menu on 2026-09-06, firmware 1.2.3:
+
+| Event | Device ms | Elapsed |
+| --- | --- | --- |
+| A started | 10313444 | — |
+| A expired | 10344069 | 30.6 s, for a 30 s timer |
+| Switched to B, started | 10344104 | — |
+| B expired | 10354266 | 10.2 s, for a 10 s timer |
+
+`GET /api/screen?display=0` then showed **`B DONE`** on the panel. So the real
+`DualTimer` and `buildPayload` — imported from `src/`, not reimplemented — ran
+unmodified on JerryScript, drove the physical display over loopback HTTP, and
+kept time to within the 200 ms tick. That is the central claim of this document
+and it is now evidence rather than argument.
+
+### A correction, and why it is recorded here
+
+The first probe reported `performance` as **present**, which would have meant a
+port keeps its monotonic clock. That was wrong, and the fault was in the probe:
+the bundle preamble installs a `performance.now → Date.now` fallback, and it
+runs *before* the probe, so `typeof performance !== 'undefined'` was measuring
+the shim rather than the runtime.
+
+The preamble now sets `__perfShimmed`, and the probe reports that instead. The
+lesson is the same one behind trap #6 in `CLAUDE.md`: a check that cannot fail
+is not a check. A `typeof` test placed downstream of your own polyfill will
+report success no matter what the device does.

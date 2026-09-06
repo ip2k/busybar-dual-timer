@@ -65,7 +65,6 @@ function probeGlobals(): void {
 
   // The ones that decide whether a full port is possible at all.
   check('WebSocket', typeof WebSocket !== 'undefined');
-  check('performance', typeof performance !== 'undefined');
   check('TextEncoder', typeof TextEncoder !== 'undefined');
   check('TextDecoder', typeof TextDecoder !== 'undefined');
   check('atob', typeof atob !== 'undefined');
@@ -75,6 +74,22 @@ function probeGlobals(): void {
 
   console.info('[probe] present:', found.join(' '));
   console.info('[probe] absent:', missing.join(' '));
+
+  // `performance` must be reported separately, because the bundle preamble
+  // installs a wall-clock fallback *before* this runs. A bare `typeof` check
+  // therefore always says "present" and measures nothing but our own shim —
+  // which is exactly the false positive the first run of this probe produced.
+  // `__perfShimmed` is set by the preamble and is the only honest signal.
+  const shimmed = (globalThis as unknown as { __perfShimmed?: boolean }).__perfShimmed;
+  if (shimmed) {
+    console.info('[probe] performance: ABSENT (shimmed to Date.now; no monotonic clock)');
+  } else {
+    // A native implementation counts from process start, so it is a small
+    // number; wall time is ~1.7e12. That distinguishes the two beyond doubt.
+    const now = performance.now();
+    console.info('[probe] performance: native, now() =', String(Math.round(now)),
+      now < 1e12 ? '(monotonic-looking)' : '(suspiciously wall-clock-like)');
+  }
 }
 
 /** Language features we rely on, checked by use rather than by version number. */
