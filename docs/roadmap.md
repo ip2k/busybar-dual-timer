@@ -93,6 +93,13 @@ See `docs/js-port.md`.
   the open question is only how it looks. `src/api.ts` does not model the
   element type yet. See `docs/busy-bar-api.md`.
 
+- **Align the ticker to the second boundary.** `index.ts` ticks on a fixed
+  `setInterval(200)`, unsynchronised with the wall clock, so a digit change
+  lands up to 200ms late and the lateness wanders. Scheduling each tick for
+  `1000 - (Date.now() % 1000)` would make seconds land crisply. Cheap, and
+  only worthwhile off-device: on-device a draw takes ~3.5s, so nothing can be
+  aligned to anything. See `docs/js-port.md`.
+
 - **Adopt `z_index` and `display_until`.** Both arrived in API 27.5.0.
   `z_index` makes `render.ts`'s reliance on array order explicit; `display_until`
   lets the firmware retire the "DONE" panel instead of `expiry.holdSeconds`

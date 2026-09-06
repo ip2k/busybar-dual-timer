@@ -436,6 +436,75 @@ Installation is just file upload: `POST /api/storage/mkdir` and
 `POST /api/storage/write`, both of which this project already had reason to
 know. No packaging step, no signing, no store.
 
+## A draw takes about 3.5 seconds
+
+The number that decides the on-device display design. The probe logs the
+response status of the frame carrying the LED colour, which pairs each send with
+its completion:
+
+```
+LED frame sent 750001 -> status 753471   = 3.47s
+LED frame sent 761792 -> status 765361   = 3.57s
+```
+
+**Roughly three and a half seconds for a single loopback HTTP draw.** Not over
+Wi-Fi — to `127.0.0.1`, on the same device. Some of that is scheduler
+contention rather than transport, but the effect is the same: while one draw is
+outstanding, every other frame is dropped by the in-flight guard, and the digits
+visibly skip seconds.
+
+So a per-second redraw is not slow on this runtime, it is impossible. This
+reframes the `countdown` element: it is not an optimisation, it is the only way
+to get a display that updates every second on device.
+
+### Can draws be aligned to the second boundary?
+
+**On device, no** — and the question stops mattering. You would have to issue a
+draw about 3.5 seconds *before* the boundary you wanted it to land on, against a
+latency that varies by 100ms between samples, so it would drift immediately. But
+a `countdown` element is animated by the firmware against the device's own
+clock, so it is inherently aligned and costs nothing. The problem is solved by
+not having it.
+
+**Off device, yes, and it is worth doing.** `src/index.ts` ticks on a fixed
+`setInterval(TICK_MS)` with `TICK_MS = 200`, which is unsynchronised with the
+wall clock, so a digit change lands up to 200ms late and the lateness wanders.
+Over Wi-Fi a draw costs single-digit milliseconds, so scheduling the next tick
+for just after the next second boundary — `1000 - (Date.now() % 1000)` — would
+make the seconds land crisply. It is a small change to the ticker and nothing
+else. Not done here; noted in `docs/roadmap.md`.
+
+## Could an on-device app act as a bridge for the laptop client?
+
+Worth asking, and the honest answer is that **most of what a bridge would buy
+you is already available without one.**
+
+The appealing part is real: the JS runtime's `fetch` reaches the outside world,
+not just loopback — the firmware's own sample fetches `https://qdiv.dev`, and
+1.2.3 added mTLS and DNS configuration. So a device-side app could call *out* to
+a laptop, inverting the connection.
+
+But the reasons to want that mostly evaporate on inspection:
+
+- **Removing per-second network draws** is the big one, and it needs no JS app
+  at all. The laptop can send a `countdown` element itself and the firmware
+  animates it. Same saving, no second codebase.
+- **Surviving a network drop** is the one genuine advantage: a device-side timer
+  keeps counting and keeps the panel right when the laptop goes away. But it
+  could not be *controlled* after that, because a JS app cannot read the
+  buttons — so it would survive as a display, not as a timer you can pause.
+- **It cannot run in the background.** An app runs only while launched from the
+  APPS menu and holds the screen while it does. There is no service model, so a
+  bridge could not sit quietly beneath the normal UI — which is precisely the
+  property this project's lever gating exists to preserve.
+- **It cannot even be started remotely.** There is no launch endpoint. The only
+  route is synthesising keypresses with `POST /api/input` (`apps`, then `ok`) to
+  walk the device's own menus, which depends on menu ordering and is fragile.
+
+So the recommendation is not a bridge. It is to take the one piece of the bridge
+that pays — firmware-side rendering via `countdown` — and use it directly from
+the existing client, which needs no on-device code and no new failure mode.
+
 ## What a port would actually cost
 
 Assuming an input binding appears, from the modules as they stand today:

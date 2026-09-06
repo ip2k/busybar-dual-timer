@@ -15,7 +15,6 @@
  * over HTTP with `tools/js-app.mjs logs` — there is no serial cable involved.
  */
 import { DualTimer } from '../../src/timers.ts';
-import { buildPayload, signature } from '../../src/render.ts';
 import type { DrawPayload } from '../../src/api.ts';
 import type { TimerConfig } from '../../src/config.ts';
 
@@ -243,18 +242,7 @@ const TIMERS: [TimerConfig, TimerConfig] = [
 
 const ALARM_MS = 6000;
 const STOCK_SOUND = 'shared/volume_change.snd';
-
-/**
- * Tick often enough to notice expiry promptly, but blink only once a second.
- *
- * These are separate numbers on purpose. The draw count is what destabilises
- * this runtime, and a blink is a *state change*, so blinking at 2.5Hz meant
- * two and a half draws a second before the clock digits even changed. At 1Hz
- * the blink rides along with the second it is already redrawing for, so the
- * whole widget costs about one request per second no matter what it is doing.
- */
 const TICK_MS = 250;
-const BLINK_MS = 1000;
 
 type IntervalHandle = ReturnType<typeof setInterval>;
 
@@ -274,6 +262,54 @@ function playChime(): void {
     });
 }
 
+/**
+ * Draw one frame per *phase*, not per second.
+ *
+ * A loopback draw was measured at **~3.5 seconds** from issue to completion on
+ * this runtime, so a per-second redraw cannot work: while one request is in
+ * flight every other frame is dropped, and the digits visibly skip. The
+ * countdown element is therefore not an optimisation, it is the only way to get
+ * a display that updates every second.
+ *
+ * So the ticking digits are a `countdown` element, which the firmware animates
+ * with no further traffic, while the label and the progress rule stay as our
+ * own elements. They are static for the life of a phase, so they cost nothing
+ * to keep. Only the digits give up their font, and only because the API gives
+ * `countdown` no font field at all.
+ */
+function drawPhase(
+  label: string,
+  color: string,
+  endsAtMs: number | null,
+  doneText: string | null,
+  ledColor?: string,
+): boolean {
+  const timeElement = doneText
+    ? {
+        id: 'time', type: 'text', x: 36, y: 8, align: 'center', display: 'front',
+        text: doneText, font: 'bold', color, z_index: 3,
+      }
+    : {
+        id: 'time', type: 'countdown', x: 39, y: 8, align: 'center', display: 'front',
+        timestamp: String(Math.round((endsAtMs ?? Date.now()) / 1000)),
+        direction: 'time_left', show_hours: 'when_non_zero', color, z_index: 3,
+      };
+
+  const payload = {
+    application_name: APP_ID,
+    priority: 95,
+    elements: [
+      {
+        id: 'label', type: 'text', x: 1, y: 1, align: 'top_left', display: 'front',
+        text: doneText ? '' : label, font: 'small', color, z_index: 2,
+      },
+      timeElement,
+    ],
+  } as unknown as DrawPayload;
+  if (ledColor) (payload as { led_notification_color?: string }).led_notification_color = ledColor;
+  return draw(payload, ledColor !== undefined);
+}
+
 function main(): void {
   mark('start');
   console.info('[dual-timer] on-device probe starting, app id', APP_ID);
@@ -286,8 +322,7 @@ function main(): void {
   const timer = new DualTimer(TIMERS);
   let finished = 0;
   let alarmStartedAt = 0;
-  let lastSignature = '';
-  let ledFired = false;
+  let drawnPhase = '';
   let shuttingDown = false;
   let draws = 0;
 
@@ -298,10 +333,10 @@ function main(): void {
   const handle: IntervalHandle = setInterval(() => {
     if (shuttingDown) return;
 
-    if (timer.checkExpiry()) {
+    const justExpired = timer.checkExpiry();
+    if (justExpired) {
       finished++;
       alarmStartedAt = Date.now();
-      ledFired = false;
       mark('expired-' + String(finished));
       console.info('[dual-timer] expired:', timer.snapshot().label);
       playChime();
@@ -309,30 +344,22 @@ function main(): void {
 
     const snapshot = timer.snapshot();
     const expired = snapshot.phase === 'expired';
-    const blinkOn = Math.floor(Date.now() / BLINK_MS) % 2 === 0;
-    const wantsLed = expired && !ledFired;
+    const phaseKey = `${snapshot.index}:${snapshot.phase}`;
 
-    // Back to render.ts, and therefore back to the device's own extra_large
-    // font and the inverting alarm. The countdown element was cheaper but the
-    // API gives it no font field at all, so it renders small and plain.
-    const payload = buildPayload(
-      { snapshot, blinkOn, alarm: expired },
-      { applicationName: APP_ID, priority: 95, ledBlink: wantsLed, ledColor: snapshot.ledColor },
-    );
-
-    const next = signature(payload);
-    if (next !== lastSignature || wantsLed) {
-      // Report the status of the LED frame specifically. The LED never fired
-      // on device while the same payload works from a laptop, so the open
-      // question is whether the firmware is rejecting this request or
-      // accepting it and ignoring the field.
-      if (draw(payload, wantsLed)) {
+    if (phaseKey !== drawnPhase) {
+      const sent = drawPhase(
+        snapshot.label,
+        snapshot.color,
+        expired ? null : Date.now() + snapshot.remainingMs,
+        expired ? `${snapshot.label} DONE` : null,
+        // The LED rides on the frame that announces expiry. It must be latched
+        // on delivery, not intent -- see the note in draw().
+        justExpired || (expired && drawnPhase !== phaseKey) ? snapshot.ledColor : undefined,
+      );
+      if (sent) {
         draws++;
-        lastSignature = next;
-        if (wantsLed) {
-          ledFired = true;
-          console.info('[dual-timer] LED frame sent, colour', snapshot.ledColor);
-        }
+        drawnPhase = phaseKey;
+        console.info('[dual-timer] drew', phaseKey);
       }
     }
 
