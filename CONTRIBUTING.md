@@ -73,8 +73,8 @@ pixels in the GIF are the pixels the hardware lit.
 Two steps, and the first needs a device:
 
 ```bash
-# 0. The 8-bit backdrop. Deterministic, so this only needs rerunning if changed.
-python3 tools/make-backdrop.py docs/demo-backdrop.png
+# 0. The animated 8-bit backdrop, one PNG per output frame. Deterministic.
+python3 tools/make-backdrop.py --out .js-build/backdrop --frames 59
 
 # 1. Photograph the panel. Builds each frame with this project's real render.ts,
 #    POSTs it, then reads it back with GET /api/screen?display=0. Also writes
@@ -84,7 +84,8 @@ node tools/capture-frames.mjs --host <bar> --out .js-build/frames
 
 # 2. Project those frames onto the model and render.
 blender -b -noaudio -P tools/render-demo.py -- \
-    --fbx <path>/busy-bar.fbx --frames .js-build/frames --out .js-build/render
+    --fbx <path>/busy-bar.fbx --frames .js-build/frames \
+    --backdrop .js-build/backdrop --out .js-build/render
 
 # 3. Add the header strip and caption bar. Needs Pillow.
 python3 tools/compose-demo.py --render .js-build/render \
@@ -92,7 +93,7 @@ python3 tools/compose-demo.py --render .js-build/render \
 
 # 4. Assemble.
 ffmpeg -y -framerate 6 -i .js-build/composed/c_%03d.png \
-  -vf "scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=192:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" \
+  -vf 'scale=680:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=full[p];[b][p]paletteuse=dither=none' \
   -loop 0 docs/demo.gif
 ```
 
@@ -116,9 +117,17 @@ Two details worth knowing if you change it:
   falls between CUSTOM and OFF, and `-40°` overshoots toward BUSY.
 - **Lights cast no shadows.** The key was drawing a hard edge across the scroll
   wheel, which on a white product reads as a smudge rather than as form.
-- **The backdrop is original artwork.** `tools/make-backdrop.py` draws it from
-  scratch with the standard library. It is deliberately not a copy of any
-  existing character — see the note in that file.
+- **The backdrop animates**, so every output frame is rendered rather than held
+  frames being copied. The rainbow waves and the dolphin bobs; the starfield is
+  static, which is why `palettegen=stats_mode=full` with `dither=none` compresses
+  better than per-frame palettes, and keeps the pixel art crisp besides.
+- **The dolphin is Flipper's, under GPL-3.0.** See `tools/vendor/README.md`:
+  `docs/demo.gif` therefore carries GPL-3.0, unlike the rest of this MIT project.
+  The sky around him is original work.
+- **The scroll wheel turns about world Z**, not its own local axis — the imported
+  parts carry their own rotations, so adding to a local euler tips the dial out
+  of plane instead of spinning it. The wheel angle also persists once set; a
+  physical dial does not spring back.
 - **The camera is framed to match `docs/controls.jpg`**, looking down about 32°
   so the mode lever, START pad and scroll wheel all read while the front panel
   stays legible. A near-level camera compresses the top face to a sliver and

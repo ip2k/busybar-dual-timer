@@ -13,6 +13,13 @@ touching a config file.
 
 ![The timer running on a BUSY Bar](https://raw.githubusercontent.com/ip2k/busybar-dual-timer/main/docs/demo.gif)
 
+<sup>Every panel frame above is a real photograph of the device: built by this
+project's own renderer, drawn to a Bar, and read back with
+`GET /api/screen`, then projected onto BUSY's published 3D model. The flying
+dolphin is Flipper's, used under GPL-3.0 — so `docs/demo.gif` carries that
+licence rather than this project's MIT. See
+[tools/vendor/README.md](tools/vendor/README.md).</sup>
+
 *Real frames captured off the device: timer A counting, a dial click switching to
 B, switching back to find A exactly where it was, and the finished timer holding
 `DONE`.*

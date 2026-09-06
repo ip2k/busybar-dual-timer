@@ -158,18 +158,24 @@ function snap(label, color, remainingMs, totalMs, phase) {
  */
 function sequence() {
   const frames = [];
-  const push = (snapshot, opts = {}) =>
+  // The wheel is a physical dial: once turned it stays turned. Defaulting it to
+  // zero on every beat that does not mention it snaps it back to its start,
+  // which reads as the dial flipping rather than rotating.
+  let wheel = 0;
+  const push = (snapshot, opts = {}) => {
+    if (opts.wheel !== undefined) wheel = opts.wheel;
     frames.push({
       snapshot,
       blinkOn: opts.blinkOn ?? true,
       alarm: opts.alarm ?? false,
       led: opts.led ?? null,
       press: opts.press ?? 0,
-      wheel: opts.wheel ?? 0,
+      wheel,
       hold: opts.hold ?? 1,
       chip: opts.chip ?? null,
       caption: opts.caption ?? null,
     });
+  };
 
   const aTotal = 25 * 60 * 1000;
   const bTotal = 5 * 60 * 1000;
