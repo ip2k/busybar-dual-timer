@@ -15,6 +15,7 @@
  * over HTTP with `tools/js-app.mjs logs` — there is no serial cable involved.
  */
 import { DualTimer } from '../../src/timers.ts';
+import { buildPayload, signature } from '../../src/render.ts';
 import type { DrawPayload } from '../../src/api.ts';
 import type { TimerConfig } from '../../src/config.ts';
 
@@ -28,7 +29,6 @@ const APP_ID = 'dev.ip2k.dualtimer';
  */
 const BASE = 'http://127.0.0.1';
 
-const TICK_MS = 200;
 
 /* ------------------------------------------------------------- breadcrumbs */
 
@@ -198,7 +198,7 @@ function draw(payload: DrawPayload, report = false): boolean {
       drawInFlight = false;
       // Only the first frame is reported. A draw that is rejected every tick
       // would otherwise bury the log, and the first one tells us what we need.
-      if (report) console.info('[draw] first frame status:', String(status));
+      if (report) console.info('[draw] status:', String(status));
     })
     .catch((e: unknown) => {
       drawInFlight = false;
@@ -218,11 +218,6 @@ function draw(payload: DrawPayload, report = false): boolean {
  * device. So the interval, which is the only thing keeping the runtime alive,
  * is cleared *inside* the response handler rather than before the request.
  */
-// `ReturnType<typeof setInterval>` rather than `number`, because this build has
-// to pull in @types/node to typecheck (see docs/js-port.md) and there
-// setInterval returns a Timeout. On the device it is a plain number.
-type IntervalHandle = ReturnType<typeof setInterval>;
-
 function clearDisplayThenStop(handle: IntervalHandle, onStopped: () => void): void {
   fetch(new Request(`${BASE}/api/display/draw?application_name=${APP_ID}`, { method: 'DELETE' }))
     // Consume the body even here, where the result is of no interest: an
@@ -249,6 +244,20 @@ const TIMERS: [TimerConfig, TimerConfig] = [
 const ALARM_MS = 6000;
 const STOCK_SOUND = 'shared/volume_change.snd';
 
+/**
+ * Tick often enough to notice expiry promptly, but blink only once a second.
+ *
+ * These are separate numbers on purpose. The draw count is what destabilises
+ * this runtime, and a blink is a *state change*, so blinking at 2.5Hz meant
+ * two and a half draws a second before the clock digits even changed. At 1Hz
+ * the blink rides along with the second it is already redrawing for, so the
+ * whole widget costs about one request per second no matter what it is doing.
+ */
+const TICK_MS = 250;
+const BLINK_MS = 1000;
+
+type IntervalHandle = ReturnType<typeof setInterval>;
+
 function playChime(): void {
   fetch(
     new Request(`${BASE}/api/audio/play`, {
@@ -265,95 +274,6 @@ function playChime(): void {
     });
 }
 
-/**
- * Draw the running timer as a firmware-rendered `countdown` element.
- *
- * This is the whole point of the experiment. `render.ts` redraws the panel on
- * every tick, which is right when a laptop is doing the drawing and wrong here:
- * each request costs a thread, frames get dropped under backpressure, and the
- * panel visibly jumps whole seconds. A `countdown` element instead takes the
- * Unix timestamp it is counting to, and the firmware animates it with **no
- * further traffic at all**.
- *
- * So a run costs a handful of requests rather than one per tick.
- *
- * The element type is declared inline because `src/api.ts` does not model
- * `countdown` yet — the off-device client has never used it. Adding it there
- * would benefit both, and is noted in docs/roadmap.md.
- */
-function drawRunning(label: string, color: string, endsAtMs: number, ledColor?: string): boolean {
-  const payload = {
-    application_name: APP_ID,
-    priority: 95,
-    elements: [
-      {
-        id: 'label',
-        type: 'text',
-        x: 1,
-        y: 1,
-        align: 'top_left',
-        display: 'front',
-        text: label,
-        font: 'small',
-        color,
-        z_index: 1,
-      },
-      {
-        id: 'time',
-        type: 'countdown',
-        x: 39,
-        y: 7,
-        align: 'center',
-        display: 'front',
-        // Seconds, and a string: the API is specific about both.
-        timestamp: String(Math.round(endsAtMs / 1000)),
-        direction: 'time_left',
-        show_hours: 'when_non_zero',
-        color,
-        z_index: 2,
-      },
-    ],
-  } as unknown as DrawPayload;
-  if (ledColor) (payload as { led_notification_color?: string }).led_notification_color = ledColor;
-  return draw(payload, false);
-}
-
-/** The static "DONE" panel. Nothing animates, so one request holds it. */
-function drawDone(label: string, color: string, ledColor?: string): boolean {
-  const payload = {
-    application_name: APP_ID,
-    priority: 95,
-    elements: [
-      {
-        id: 'label',
-        type: 'text',
-        x: 1,
-        y: 1,
-        align: 'top_left',
-        display: 'front',
-        text: '',
-        font: 'small',
-        color,
-        z_index: 1,
-      },
-      {
-        id: 'time',
-        type: 'text',
-        x: 36,
-        y: 8,
-        align: 'center',
-        display: 'front',
-        text: `${label} DONE`,
-        font: 'bold',
-        color,
-        z_index: 2,
-      },
-    ],
-  } as unknown as DrawPayload;
-  if (ledColor) (payload as { led_notification_color?: string }).led_notification_color = ledColor;
-  return draw(payload, false);
-}
-
 function main(): void {
   mark('start');
   console.info('[dual-timer] on-device probe starting, app id', APP_ID);
@@ -366,8 +286,10 @@ function main(): void {
   const timer = new DualTimer(TIMERS);
   let finished = 0;
   let alarmStartedAt = 0;
-  let drawnPhase = '';
+  let lastSignature = '';
+  let ledFired = false;
   let shuttingDown = false;
+  let draws = 0;
 
   timer.toggle();
   mark('timer-started');
@@ -376,10 +298,10 @@ function main(): void {
   const handle: IntervalHandle = setInterval(() => {
     if (shuttingDown) return;
 
-    const justExpired = timer.checkExpiry();
-    if (justExpired) {
+    if (timer.checkExpiry()) {
       finished++;
       alarmStartedAt = Date.now();
+      ledFired = false;
       mark('expired-' + String(finished));
       console.info('[dual-timer] expired:', timer.snapshot().label);
       playChime();
@@ -387,22 +309,30 @@ function main(): void {
 
     const snapshot = timer.snapshot();
     const expired = snapshot.phase === 'expired';
+    const blinkOn = Math.floor(Date.now() / BLINK_MS) % 2 === 0;
+    const wantsLed = expired && !ledFired;
 
-    // Redraw only when the *phase* changes, never on a timer. While a countdown
-    // is running the firmware animates it for us, so there is nothing to send.
-    const phaseKey = `${snapshot.index}:${snapshot.phase}`;
-    if (phaseKey !== drawnPhase) {
-      const sent = expired
-        ? drawDone(snapshot.label, snapshot.color, snapshot.ledColor)
-        : drawRunning(
-            snapshot.label,
-            snapshot.color,
-            Date.now() + snapshot.remainingMs,
-            justExpired ? snapshot.ledColor : undefined,
-          );
-      if (sent) {
-        drawnPhase = phaseKey;
-        console.info('[dual-timer] drew', phaseKey, expired ? '(DONE + LED)' : '(countdown element)');
+    // Back to render.ts, and therefore back to the device's own extra_large
+    // font and the inverting alarm. The countdown element was cheaper but the
+    // API gives it no font field at all, so it renders small and plain.
+    const payload = buildPayload(
+      { snapshot, blinkOn, alarm: expired },
+      { applicationName: APP_ID, priority: 95, ledBlink: wantsLed, ledColor: snapshot.ledColor },
+    );
+
+    const next = signature(payload);
+    if (next !== lastSignature || wantsLed) {
+      // Report the status of the LED frame specifically. The LED never fired
+      // on device while the same payload works from a laptop, so the open
+      // question is whether the firmware is rejecting this request or
+      // accepting it and ignoring the field.
+      if (draw(payload, wantsLed)) {
+        draws++;
+        lastSignature = next;
+        if (wantsLed) {
+          ledFired = true;
+          console.info('[dual-timer] LED frame sent, colour', snapshot.ledColor);
+        }
       }
     }
 
@@ -415,11 +345,11 @@ function main(): void {
         shuttingDown = true;
         clearDisplayThenStop(handle, () => {
           mark('complete');
-          console.info('[dual-timer] done; both timers ran to expiry');
+          console.info('[dual-timer] done; both timers ran to expiry, draws:', draws);
         });
       }
     }
-  }, 500);
+  }, TICK_MS);
 }
 
 try {

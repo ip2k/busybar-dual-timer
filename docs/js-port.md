@@ -279,6 +279,25 @@ reported the notification as requested. The latch now moves only once `draw()`
 confirms the frame actually went out, and the frame is sent even when the
 rendered signature is unchanged.
 
+### The LED works over HTTP, but not from a JS app
+
+`led_notification_color` is **not** broken on 1.2.3. Driven from a laptop
+against `POST /api/display/draw` — the exact path the shipped off-device client
+uses — red, green and blue notifications all fired, and each draw landed on the
+panel. So the shipped app is unaffected.
+
+The same field, in the same shape, at the same priority, produced no LED at all
+from inside a JS app. The draws themselves land: the panel updates. Only the
+notification is ignored.
+
+Unresolved. The next step is the response status of the specific frame carrying
+the field, to separate "the firmware rejected this request" from "the firmware
+accepted it and ignored the field"; the probe now logs exactly that. If it is
+the latter, the likely explanation is that a notification belongs to the
+foreground app and the launcher owns that while a script runs.
+
+**This is worth knowing before relying on the LED in any port.**
+
 ### `CountdownElement` removes the redraw problem entirely
 
 The panel visibly jumped several seconds at a time on the device, because a
@@ -295,6 +314,27 @@ redraw, and with it most of the fetch pressure that caused every problem
 documented above. The cost is losing control of the font and the layout, which
 is why `docs/roadmap.md` still lists it as an open question rather than a plan.
 It is equally applicable to the off-device client.
+
+**But it has no font.** The schema gives `countdown` only `timestamp`,
+`direction`, `show_hours` and `color` — there is no `font` field, so it renders
+in the firmware's default face rather than the `extra_large` (busy_bold_10) this
+project chose to look native. On hardware the difference is obvious and not
+flattering, and the inverting alarm is not expressible either, since the element
+draws itself.
+
+So the trade is sharper than "fewer requests, less control":
+
+| | `countdown` element | `render.ts` text |
+| --- | --- | --- |
+| Requests per run | 7 | ~40-70 |
+| Font | fixed, small | `extra_large`, native |
+| Inverting alarm | not possible | yes |
+| Stability on device | proven | unproven |
+
+The middle position, which is what the probe now does, is to keep `render.ts`
+but decouple the blink rate from the tick rate: blinking at 2.5Hz cost two and a
+half draws a second before the digits even changed, whereas a 1Hz blink rides
+along with the second it was already redrawing for.
 
 ### Modules do not resolve, so the app must be one file
 
