@@ -141,15 +141,21 @@ function probeModules(): void {
  * Post a frame. Deliberately fire-and-forget with a `.catch`: a draw that fails
  * must not stop the countdown, exactly as in the off-device client.
  */
-function draw(payload: DrawPayload): void {
+function draw(payload: DrawPayload, report = false): void {
   fetch(
     new Request(`${BASE}/api/display/draw`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  ).catch((e: unknown) => {
-    console.error('[draw] failed:', String(e));
-  });
+  )
+    .then((response: { status?: number }) => {
+      // Only the first frame is reported. A draw that is rejected every tick
+      // would otherwise bury the log, and the first one tells us what we need.
+      if (report) console.info('[draw] first frame status:', String(response.status));
+    })
+    .catch((e: unknown) => {
+      console.error('[draw] failed:', String(e));
+    });
 }
 
 function clearDisplay(): void {
@@ -162,10 +168,36 @@ function clearDisplay(): void {
 
 /* -------------------------------------------------------------------- run */
 
+/** Shortened from the real defaults so a full pass takes well under a minute. */
 const TIMERS: [TimerConfig, TimerConfig] = [
-  { label: 'A', seconds: 30, color: '#00E5FFFF', ledColor: '#00E5FFFF' },
-  { label: 'B', seconds: 10, color: '#39FF14FF', ledColor: '#39FF14FF' },
+  { label: 'A', seconds: 8, color: '#00E5FFFF', ledColor: '#00E5FFFF' },
+  { label: 'B', seconds: 5, color: '#39FF14FF', ledColor: '#39FF14FF' },
 ];
+
+/** How long to hold the inverting alarm so it is unmistakable to a watcher. */
+const ALARM_TICKS = 40; // 8 seconds at TICK_MS
+
+/**
+ * A device sound, so nothing has to be uploaded first. `POST /api/audio/play`
+ * answers `200 {"result":"OK"}` even for files that do not exist, so its reply
+ * proves nothing — see trap #6 in CLAUDE.md. Only a listener can confirm this.
+ */
+const STOCK_SOUND = 'shared/volume_change.snd';
+
+function playChime(): void {
+  fetch(
+    new Request(`${BASE}/api/audio/play`, {
+      method: 'POST',
+      body: JSON.stringify({ application_name: APP_ID, stock_path: STOCK_SOUND }),
+    }),
+  )
+    .then(() => {
+      console.info('[audio] play requested (a 200 here means nothing; listen instead)');
+    })
+    .catch((e: unknown) => {
+      console.error('[audio] request failed:', String(e));
+    });
+}
 
 function main(): void {
   console.info('[dual-timer] on-device probe starting, app id', APP_ID);
@@ -177,6 +209,9 @@ function main(): void {
   let lastSignature = '';
   let ticks = 0;
   let finished = 0;
+  let alarmTicks = 0;
+  let lastInverted: boolean | null = null;
+  let firstDrawReported = false;
 
   // Auto-start, because there is no way to read the buttons: the runtime has no
   // WebSocket and the HTTP API only *sends* input, never reports it. This is
@@ -189,31 +224,60 @@ function main(): void {
 
     if (timer.checkExpiry()) {
       finished++;
-      console.info('[dual-timer] expired:', timer.snapshot().label, 'after', ticks, 'ticks');
-      if (finished === 1) {
-        timer.switchTimer();
-        timer.toggle();
-        console.info('[dual-timer] switched to B and started it');
-      }
+      alarmTicks = 0;
+      console.info('[dual-timer] expired:', timer.snapshot().label);
+      playChime();
     }
 
     const snapshot = timer.snapshot();
+    const expired = snapshot.phase === 'expired';
+    if (expired) alarmTicks++;
+
+    // Blink every other tick, so a full invert/normal cycle is 800ms — slow
+    // enough to be seen across a room rather than read as a flicker.
+    const blinkOn = Math.floor(ticks / 2) % 2 === 0;
+    const inverted = expired && blinkOn;
+
+    if (expired && inverted !== lastInverted) {
+      console.info('[dual-timer] alarm phase:', inverted ? 'INVERTED' : 'normal');
+      lastInverted = inverted;
+    }
+
     const payload = buildPayload(
-      { snapshot, blinkOn: Math.floor(ticks / 2) % 2 === 0, alarm: snapshot.phase === 'expired' },
-      { applicationName: APP_ID, priority: 95 },
+      { snapshot, blinkOn, alarm: expired },
+      {
+        applicationName: APP_ID,
+        priority: 95,
+        // Fire the firmware's LED notification preset on the tick the timer
+        // expires. It is a one-shot three-blink, so re-sending it every frame
+        // would restart it constantly; once per expiry is the whole behaviour.
+        ledBlink: expired && alarmTicks === 1,
+      },
     );
 
     const next = signature(payload);
     if (next !== lastSignature) {
       lastSignature = next;
-      draw(payload);
+      draw(payload, !firstDrawReported);
+      firstDrawReported = true;
     }
 
-    // Stop after B has finished and had a few seconds to be seen.
-    if (finished >= 2 && ticks % 5 === 0) {
-      clearInterval(handle);
-      clearDisplay();
-      console.info('[dual-timer] done after', ticks, 'ticks; both timers ran to expiry');
+    if (expired && alarmTicks === 1) {
+      console.info('[dual-timer] LED notification requested, colour', snapshot.ledColor);
+    }
+
+    // First expiry: let the alarm run, then move to B. Second: hold, then stop.
+    if (expired && alarmTicks >= ALARM_TICKS) {
+      if (finished === 1) {
+        timer.switchTimer();
+        timer.toggle();
+        lastInverted = null;
+        console.info('[dual-timer] switched to B and started it');
+      } else {
+        clearInterval(handle);
+        clearDisplay();
+        console.info('[dual-timer] done after', ticks, 'ticks; both timers ran to expiry');
+      }
     }
   }, TICK_MS);
 }

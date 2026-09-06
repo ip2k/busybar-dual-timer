@@ -207,6 +207,25 @@ it exits. That is a cleaner model than ours, and `behavior.activeSwitchPosition`
 the input gating and `reassertEveryMs` would all simply be deleted. But it is a
 behavioural change for existing users, not a transparent port.
 
+### "Setup" is a firmware screen, and it is a stub
+
+The launcher does not run an app immediately. It shows a **Start / Setup**
+dialog first, and Setup is where per-app settings will eventually live.
+
+Today it is not ours to fill in. `js_app_launcher_scene_setup.c` sets both
+displays to the literal text **"Not implemented"** and handles no events. The
+app-side half — `appmeta/settings.json` — is listed in the official docs with
+the body "To be decided". There is currently no mechanism for an app to declare
+a setting, so nothing can be done here from this side.
+
+That is worth knowing because it is where the natural design goes: A and B
+lengths, and beyond that **named profiles** that can be recalled instead of
+being dialled in every time. That is a much better fit for a device with a
+Setup screen than for a config file on a remote host, and it is an argument for
+the on-device model rather than against it. It is also an argument for not
+re-architecting anything until the settings interface actually exists — the
+shape of it will be dictated by whatever `settings.json` turns out to be.
+
 ### Budgets
 
 - **JS heap**: `heap_size_kib` in the manifest, 1–256 KiB, default 32. This

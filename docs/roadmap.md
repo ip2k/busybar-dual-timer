@@ -66,6 +66,20 @@ being a remote client and would simply be deleted.
 
 Watch <https://docs.busy.app/bar/dev> for the SDK.
 
+## Named timer profiles (on-device)
+
+Once the JS app Setup screen exists, the natural feature is **named profiles** —
+several A/B pairs saved and recalled by name, instead of dialling lengths in
+every time. "Pomodoro 25/5", "Long session 50/10", "Tea 3/0".
+
+Deliberately not started. The firmware's Setup scene currently renders "Not
+implemented", and `appmeta/settings.json` is "To be decided" in the official
+docs, so the storage format and the UI affordances are both unknown — anything
+built now would be built against a guess. `localStorage` exists in the runtime
+and is the obvious place to keep them when the time comes.
+
+See `docs/js-port.md`.
+
 ## Ideas not yet explored
 
 - **Drive `/api/busy/*` instead of rendering our own display.** The firmware has
