@@ -21,6 +21,8 @@ will not be cut without one.
   few seconds of a long timer, so the bar sat pinned at full width for the whole
   demo and then blinked out at the end. Timer B is now time-lapsed, and labelled
   as such, so the rule visibly sweeps 72 → 58 → 43 → 29 → 14 → 7 → 2 → 0 pixels.
+- **The demo ran too fast to read.** Halved to 3 frames per second, so the
+  shorter captions are on screen long enough to actually be read.
 
 ## [1.1.0] - 2026-09-06
 

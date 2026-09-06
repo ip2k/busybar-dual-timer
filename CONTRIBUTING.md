@@ -92,7 +92,7 @@ python3 tools/compose-demo.py --render .js-build/render \
     --frames .js-build/frames --out .js-build/composed
 
 # 4. Assemble.
-ffmpeg -y -framerate 6 -i .js-build/composed/c_%03d.png \
+ffmpeg -y -framerate 3 -i .js-build/composed/c_%03d.png \
   -vf 'scale=680:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=full[p];[b][p]paletteuse=dither=none' \
   -loop 0 docs/demo.gif
 ```
@@ -117,6 +117,10 @@ Two details worth knowing if you change it:
   falls between CUSTOM and OFF, and `-40°` overshoots toward BUSY.
 - **Lights cast no shadows.** The key was drawing a hard edge across the scroll
   wheel, which on a white product reads as a smudge rather than as form.
+- **3 frames per second, not 6.** The captions have to be readable at a glance,
+  and at 6fps the shorter beats were gone before they could be. The `hold`
+  counts in the sequence are relative, so the frame rate is the one place to
+  change overall pace.
 - **The backdrop animates**, so every output frame is rendered rather than held
   frames being copied. The rainbow waves and the dolphin bobs; the starfield is
   static, which is why `palettegen=stats_mode=full` with `dither=none` compresses
