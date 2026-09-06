@@ -10,6 +10,18 @@ will not be cut without one.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The demo animation told a confusing story.** The wheel beat adjusted timer A
+  *mid-countdown*, so 24:53 plus one click showed 25:53 — arithmetically right
+  for "±1 minute per click", but it read as the timer resetting to a nonsense
+  value, since nothing on screen said which of the two numbers had moved. The
+  wheel now demonstrates itself on a stopped timer, 25:00 → 26:00 → 27:00.
+- **The progress rule never appeared to work.** Every beat showed only the first
+  few seconds of a long timer, so the bar sat pinned at full width for the whole
+  demo and then blinked out at the end. Timer B is now time-lapsed, and labelled
+  as such, so the rule visibly sweeps 72 → 58 → 43 → 29 → 14 → 7 → 2 → 0 pixels.
+
 ## [1.1.0] - 2026-09-06
 
 First release since the device gained firmware 1.2.3 (device API `27.5.0`, up

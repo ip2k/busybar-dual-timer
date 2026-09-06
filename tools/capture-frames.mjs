@@ -153,8 +153,13 @@ function snap(label, color, remainingMs, totalMs, phase) {
  * the status LED, the START pad going down, the wheel turning.
  *
  * `hold` is how many output frames the beat occupies. The inverting alarm needs
- * it: at one beat per frame the inversion flickers past too fast to register,
- * which is exactly what the first cut of this demo got wrong.
+ * it: at one beat per frame the inversion flickers past too fast to register.
+ *
+ * The order matters for legibility, not just accuracy. The wheel demonstrates
+ * itself on a *stopped* timer, before anything is running. An earlier cut
+ * adjusted A mid-countdown, which was faithful — 24:53 plus a minute really is
+ * 25:53 — but read as the timer resetting to a nonsense value, because nothing
+ * on screen says which of the two numbers moved.
  */
 function sequence() {
   const frames = [];
@@ -177,43 +182,64 @@ function sequence() {
     });
   };
 
-  const aTotal = 25 * 60 * 1000;
-  const bTotal = 5 * 60 * 1000;
+  const MIN = 60 * 1000;
+  const bTotal = 5 * MIN;
 
-  push(snap('A', A, aTotal, aTotal, 'idle'), { hold: 4, chip: 'CUSTOM', caption: 'lever on CUSTOM \u2192 the timer takes the panel' });
+  // Stopped at its configured length, waiting.
+  push(snap('A', A, 25 * MIN, 25 * MIN, 'idle'),
+    { hold: 4, chip: 'CUSTOM', caption: 'lever on CUSTOM \u2192 the timer takes the panel' });
+
+  // Two clicks of the wheel, on a stopped timer, so the whole number moves and
+  // the "+1 minute" is unmistakable: 25:00 -> 26:00 -> 27:00.
+  push(snap('A', A, 26 * MIN, 26 * MIN, 'paused'),
+    { wheel: 14, hold: 3, chip: 'WHEEL', caption: 'turn the wheel \u2192 \u00b1 1 minute per click' });
+  push(snap('A', A, 27 * MIN, 27 * MIN, 'paused'), { wheel: 28, hold: 3 });
+
+  const aTotal = 27 * MIN;
 
   // START goes down, and the firmware's notification preset fires in the
   // timer's colour. Three blinks is the preset's own behaviour, not a choice.
-  push(snap('A', A, aTotal, aTotal, 'running'), { led: A, press: 1, hold: 2, chip: 'START', caption: 'START \u2192 running, LED blinks timer A\u2019s colour' });
+  push(snap('A', A, aTotal, aTotal, 'running'),
+    { led: A, press: 1, hold: 2, chip: 'START', caption: 'START \u2192 running, LED blinks timer A\u2019s colour' });
   push(snap('A', A, aTotal - 200, aTotal, 'running'), { press: 0, hold: 1 });
   push(snap('A', A, aTotal - 1000, aTotal, 'running'), { led: A, hold: 1 });
   push(snap('A', A, aTotal - 2000, aTotal, 'running'), { hold: 1 });
   push(snap('A', A, aTotal - 3000, aTotal, 'running'), { led: A, hold: 1 });
+  for (let s = 4; s <= 8; s++) push(snap('A', A, aTotal - s * 1000, aTotal, 'running'), { hold: 1 });
 
-  for (let s = 4; s <= 7; s++) push(snap('A', A, aTotal - s * 1000, aTotal, 'running'), { hold: 1 });
+  // Pressing the dial switches to B. It does not turn, so the wheel holds its
+  // angle. A is banked at 26:52 and waiting.
+  push(snap('B', B, bTotal, bTotal, 'idle'),
+    { led: B, hold: 3, chip: 'PRESS', caption: 'press the wheel \u2192 switch to timer B' });
+  push(snap('B', B, bTotal, bTotal, 'running'),
+    { hold: 2, chip: 'START', caption: 'B is running \u2014 A keeps its remaining time' });
+  for (let s = 1; s <= 3; s++) push(snap('B', B, bTotal - s * 1000, bTotal, 'running'), { hold: 1 });
 
-  // The wheel adds a minute per detent.
-  push(snap('A', A, aTotal - 7000, aTotal, 'paused'), { wheel: 14, hold: 2, chip: 'WHEEL', caption: 'turn the wheel \u2192 \u00b1 1 minute per click' });
-  push(snap('A', A, aTotal + 53000, aTotal + 60000, 'paused'), { wheel: 28, hold: 3 });
+  // Then time-lapsed, so the rule along the bottom actually sweeps. An earlier
+  // cut showed only the first few seconds of every timer, which left the bar
+  // pinned at full width for the whole demo and then blinking out at the end --
+  // technically correct, and useless as an illustration of what it does.
+  for (const remaining of [4 * MIN, 3 * MIN, 2 * MIN, MIN, 30 * 1000, 10 * 1000]) {
+    push(snap('B', B, remaining, bTotal, 'running'),
+      { hold: 2, chip: null, caption: 'the rule along the bottom is time remaining \u2014 sped up here' });
+  }
 
-  // Pressing the dial switches to B, and the LED takes B's colour.
-  push(snap('B', B, bTotal, bTotal, 'idle'), { led: B, wheel: 34, hold: 2, chip: 'PRESS', caption: 'press the wheel \u2192 switch to timer B' });
-  push(snap('B', B, bTotal, bTotal, 'running'), { wheel: 34, hold: 1, chip: 'START', caption: 'B is running \u2014 A keeps its remaining time' });
-  for (let s = 1; s <= 4; s++) push(snap('B', B, bTotal - s * 1000, bTotal, 'running'), { hold: 1 });
-
+  // Down to the wire, in real time again.
   for (let s = 3; s >= 1; s--) push(snap('B', B, s * 1000, bTotal, 'running'), { hold: 1 });
 
-  // Expiry: the panel inverts on each blink and the LED fires again. Both need
-  // holding, or the whole alarm is over in half a second.
+  // Expiry: the panel inverts on each blink and the LED fires again.
   for (let i = 0; i < 4; i++) {
-    push(snap('B', B, 0, bTotal, 'expired'), { blinkOn: true, alarm: true, led: B, hold: 3, chip: 'DONE', caption: 'expired \u2192 the panel inverts and the LED fires' });
+    push(snap('B', B, 0, bTotal, 'expired'),
+      { blinkOn: true, alarm: true, led: B, hold: 3, chip: 'DONE', caption: 'expired \u2192 the panel inverts and the LED fires' });
     push(snap('B', B, 0, bTotal, 'expired'), { blinkOn: false, alarm: true, hold: 3 });
   }
 
   // The quiet DONE that holds afterwards.
-  push(snap('B', B, 0, bTotal, 'expired'), { blinkOn: false, alarm: false, hold: 6, chip: 'DONE', caption: 'DONE holds until you acknowledge it' });
+  push(snap('B', B, 0, bTotal, 'expired'),
+    { blinkOn: false, alarm: false, hold: 6, chip: 'DONE', caption: 'DONE holds until you acknowledge it' });
   return frames;
 }
+
 /* -------------------------------------------------------------- main ---- */
 
 if (HOST === 'x') {
