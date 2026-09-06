@@ -91,29 +91,57 @@ for _ in range(340):
 
 # ------------------------------------------------------------------ font ---
 
-# A 3x5 pixel font, drawn to sit beside the dolphin without looking like it came
-# from somewhere else. Uppercase only, which is all the balloons need.
+# A 5x7 pixel font. Bigger than the 3x5 it replaced, which was legible at full
+# size and mush once the sky was scaled into the frame.
 GLYPHS = {
-    "A": "###|#.#|###|#.#|#.#", "B": "##.|#.#|##.|#.#|##.", "C": ".##|#..|#..|#..|.##",
-    "D": "##.|#.#|#.#|#.#|##.", "E": "###|#..|##.|#..|###", "F": "###|#..|##.|#..|#..",
-    "G": ".##|#..|#.#|#.#|.##", "H": "#.#|#.#|###|#.#|#.#", "I": "###|.#.|.#.|.#.|###",
-    "J": "..#|..#|..#|#.#|.#.", "K": "#.#|#.#|##.|#.#|#.#", "L": "#..|#..|#..|#..|###",
-    "M": "#.#|###|###|#.#|#.#", "N": "#.#|##.|###|.##|#.#", "O": ".#.|#.#|#.#|#.#|.#.",
-    "P": "##.|#.#|##.|#..|#..", "Q": ".#.|#.#|#.#|##.|.##", "R": "##.|#.#|##.|#.#|#.#",
-    "S": ".##|#..|.#.|..#|##.", "T": "###|.#.|.#.|.#.|.#.", "U": "#.#|#.#|#.#|#.#|.##",
-    "V": "#.#|#.#|#.#|#.#|.#.", "W": "#.#|#.#|###|###|#.#", "X": "#.#|#.#|.#.|#.#|#.#",
-    "Y": "#.#|#.#|.#.|.#.|.#.", "Z": "###|..#|.#.|#..|###",
-    "0": ".#.|#.#|#.#|#.#|.#.", "1": ".#.|##.|.#.|.#.|###", "2": "##.|..#|.#.|#..|###",
-    "3": "##.|..#|.#.|..#|##.", "4": "#.#|#.#|###|..#|..#", "5": "###|#..|##.|..#|##.",
-    "6": ".##|#..|##.|#.#|.#.", "7": "###|..#|.#.|.#.|.#.", "8": ".#.|#.#|.#.|#.#|.#.",
-    "9": ".#.|#.#|.##|..#|##.",
-    "!": ".#.|.#.|.#.|...|.#.", "+": "...|.#.|###|.#.|...", "?": "##.|..#|.#.|...|.#.",
-    "-": "...|...|###|...|...", " ": "...|...|...|...|...",
+    "A": ".###.|#...#|#...#|#####|#...#|#...#|#...#",
+    "B": "####.|#...#|#...#|####.|#...#|#...#|####.",
+    "C": ".####|#....|#....|#....|#....|#....|.####",
+    "D": "####.|#...#|#...#|#...#|#...#|#...#|####.",
+    "E": "#####|#....|#....|####.|#....|#....|#####",
+    "F": "#####|#....|#....|####.|#....|#....|#....",
+    "G": ".###.|#...#|#....|#.###|#...#|#...#|.###.",
+    "H": "#...#|#...#|#...#|#####|#...#|#...#|#...#",
+    "I": "#####|..#..|..#..|..#..|..#..|..#..|#####",
+    "J": "..###|....#|....#|....#|#...#|#...#|.###.",
+    "K": "#...#|#..#.|#.#..|##...|#.#..|#..#.|#...#",
+    "L": "#....|#....|#....|#....|#....|#....|#####",
+    "M": "#...#|##.##|#.#.#|#...#|#...#|#...#|#...#",
+    "N": "#...#|##..#|#.#.#|#.#.#|#..##|#...#|#...#",
+    "O": ".###.|#...#|#...#|#...#|#...#|#...#|.###.",
+    "P": "####.|#...#|#...#|####.|#....|#....|#....",
+    "Q": ".###.|#...#|#...#|#...#|#.#.#|#..#.|.##.#",
+    "R": "####.|#...#|#...#|####.|#.#..|#..#.|#...#",
+    "S": ".####|#....|#....|.###.|....#|....#|####.",
+    "T": "#####|..#..|..#..|..#..|..#..|..#..|..#..",
+    "U": "#...#|#...#|#...#|#...#|#...#|#...#|.###.",
+    "V": "#...#|#...#|#...#|#...#|#...#|.#.#.|..#..",
+    "W": "#...#|#...#|#...#|#...#|#.#.#|##.##|#...#",
+    "X": "#...#|#...#|.#.#.|..#..|.#.#.|#...#|#...#",
+    "Y": "#...#|#...#|.#.#.|..#..|..#..|..#..|..#..",
+    "Z": "#####|....#|...#.|..#..|.#...|#....|#####",
+    "0": ".###.|#...#|#..##|#.#.#|##..#|#...#|.###.",
+    "1": "..#..|.##..|..#..|..#..|..#..|..#..|#####",
+    "2": ".###.|#...#|....#|...#.|..#..|.#...|#####",
+    "3": "#####|...#.|..#..|...#.|....#|#...#|.###.",
+    "4": "...#.|..##.|.#.#.|#..#.|#####|...#.|...#.",
+    "5": "#####|#....|####.|....#|....#|#...#|.###.",
+    "6": ".###.|#....|#....|####.|#...#|#...#|.###.",
+    "7": "#####|....#|...#.|..#..|.#...|.#...|.#...",
+    "8": ".###.|#...#|#...#|.###.|#...#|#...#|.###.",
+    "9": ".###.|#...#|#...#|.####|....#|....#|.###.",
+    "!": "..#..|..#..|..#..|..#..|..#..|.....|..#..",
+    "?": ".###.|#...#|....#|...#.|..#..|.....|..#..",
+    "+": ".....|..#..|..#..|#####|..#..|..#..|.....",
+    "-": ".....|.....|.....|#####|.....|.....|.....",
+    ".": ".....|.....|.....|.....|.....|.....|..#..",
+    " ": ".....|.....|.....|.....|.....|.....|.....",
 }
-GLYPH_W, GLYPH_H, TRACK = 3, 5, 1
+GLYPH_W, GLYPH_H, TRACK = 5, 7, 1
 
-INK = (26, 22, 34)      # the dolphin's outline colour
-PAPER = (245, 248, 255) # and his belly
+INK = (20, 18, 28)       # the dolphin's outline colour
+PAPER = (248, 250, 255)  # and his belly
+SHADE = (150, 152, 172)  # the drop shadow
 
 
 def text_width(text):
@@ -131,41 +159,59 @@ def draw_text(x, y, text, colour):
 
 def draw_balloon(text, tip_x, tip_y):
     """
-    A speech balloon in the dolphin's own style: pale fill, dark outline, with a
-    tail running back to `tip_x, tip_y` -- his snout.
+    A comic speech balloon: white panel, heavy two-pixel black outline, a grey
+    drop shadow offset down and left, and a tapering tail back to `tip_x, tip_y`
+    -- the dolphin's snout.
 
     Placed *beside* him rather than above. There are only about ten pixels of sky
-    over his head at this scale, and a balloon needs eleven plus a tail, so an
-    overhead one is clipped by the top of the frame.
+    over his head at this scale and a balloon needs far more, so an overhead one
+    is clipped by the top of the frame with its tail pointing at nothing.
     """
-    w = text_width(text) + 6
-    h = GLYPH_H + 6
-    x0 = tip_x + 8
+    pad = 4
+    w = text_width(text) + pad * 2 + 4
+    h = GLYPH_H + pad * 2 + 4
+    x0 = tip_x + 10
     y0 = tip_y - h // 2
 
     # Keep it inside the sky whatever the text length or wherever he is bobbing.
-    x0 = max(1, min(x0, W - w - 2))
-    y0 = max(2, min(y0, H - h - 2))
+    x0 = max(3, min(x0, W - w - 2))
+    y0 = max(3, min(y0, H - h - 4))
 
+    # Shadow first, offset down-left, so the panel lands on top of it.
+    for yy in range(y0 + 2, y0 + h + 2):
+        for xx in range(x0 - 2, x0 + w - 2):
+            put(xx, yy, SHADE)
+
+    # Panel: two-pixel border, white interior.
     for yy in range(y0, y0 + h):
         for xx in range(x0, x0 + w):
-            # Clip the corners by a pixel so the box reads as rounded.
-            if (xx in (x0, x0 + w - 1)) and (yy in (y0, y0 + h - 1)):
+            near_edge = (xx - x0 < 2 or x0 + w - 1 - xx < 2
+                         or yy - y0 < 2 or y0 + h - 1 - yy < 2)
+            # Notch the corners so the heavy border still reads as a rectangle
+            # rather than as a blob.
+            corner = (xx - x0 < 2 or x0 + w - 1 - xx < 2) and \
+                     (yy - y0 < 2 or y0 + h - 1 - yy < 2)
+            if corner and (abs(xx - x0) + abs(yy - y0) < 2
+                           or abs(xx - (x0 + w - 1)) + abs(yy - y0) < 2
+                           or abs(xx - x0) + abs(yy - (y0 + h - 1)) < 2
+                           or abs(xx - (x0 + w - 1)) + abs(yy - (y0 + h - 1)) < 2):
                 continue
-            edge = xx in (x0, x0 + w - 1) or yy in (y0, y0 + h - 1)
-            put(xx, yy, INK if edge else PAPER)
+            put(xx, yy, INK if near_edge else PAPER)
 
-    # The tail: a stepped wedge from the balloon's left edge back to the snout,
-    # outlined above and below so it reads against the sky.
-    mid = y0 + h // 2
-    for step in range(x0 - tip_x):
-        tx = x0 - 1 - step
-        ty = mid + step // 2
-        put(tx, ty, PAPER)
-        put(tx, ty - 1, INK)
-        put(tx, ty + 1, INK)
+    # Tail: a wedge from the panel's lower-left back toward the snout, narrowing
+    # as it goes, with its own outline and shadow.
+    run = max(3, x0 - tip_x)
+    for i in range(run):
+        xx = x0 - 1 - i
+        thickness = max(1, round(5 * (1 - i / run)))
+        top = y0 + h - 5 + i // 2
+        put(xx, top - 1, INK)
+        for t in range(thickness):
+            put(xx, top + t, PAPER)
+        put(xx, top + thickness, INK)
+        put(xx - 1, top + thickness + 1, SHADE)
 
-    draw_text(x0 + 3, y0 + 3, text, INK)
+    draw_text(x0 + pad + 2, y0 + pad + 2, text, INK)
 
 
 # --------------------------------------------------------------- dolphin ---
@@ -238,13 +284,36 @@ def load_sprite(path):
 HERE = os.path.dirname(os.path.abspath(__file__))
 SPRITE, SW, SH = load_sprite(os.path.join(HERE, "vendor", "dolphin_71x25.png"))
 
+def rolled(sprite, sh, angle):
+    """
+    The sprite mid-barrel-roll, spinning about its own long axis.
+
+    Rows are squashed by |cos(angle)| and the order flips once cos goes
+    negative, so he thins to an edge, comes back inverted, and carries on --
+    a roll rather than a rotation in the picture plane.
+
+    It has to be this axis. Rotating the 71x25 sprite ninety degrees would make
+    it 71 pixels *tall*, and there are about thirty pixels of sky above the
+    device; he would simply vanish behind it.
+    """
+    c = math.cos(angle)
+    height = max(1, int(round(sh * abs(c))))
+    rows = []
+    for y in range(height):
+        src = int((y + 0.5) / height * sh)
+        if c < 0:
+            src = sh - 1 - src
+        rows.append(sprite[min(sh - 1, max(0, src))])
+    return rows, height
+
+
 RAINBOW = [(255, 60, 60), (255, 150, 40), (255, 225, 60),
            (90, 220, 90), (70, 150, 255), (170, 90, 230)]
 
 BASE = list(px)   # the sky, without anything moving on it
 
 
-def frame(n, total, say=None):
+def frame(n, total, say=None, roll=None):
     """Draw frame `n`: the dolphin bobs, the rainbow waves, and he may speak."""
     global px
     px = list(BASE)
@@ -253,7 +322,8 @@ def frame(n, total, say=None):
     # High enough to clear the device, which occupies the middle band of the
     # frame -- at mid-height he flies straight behind it and is never seen.
     # Left of centre, leaving the top-right clear for a speech balloon.
-    dx, dy = 138, 22
+    # Left of centre, leaving the top-right clear for the speech balloon.
+    dx, dy = 116, 22
     bob = round(2.2 * math.sin(phase))
 
     # The wake, drawn first so the dolphin sits on top of it. Each column's
@@ -268,13 +338,14 @@ def frame(n, total, say=None):
             put(x, y, colour)
             put(x, y + 1, colour)
 
-    for j in range(SH):
+    rows, height = (rolled(SPRITE, SH, roll) if roll is not None else (SPRITE, SH))
+    for j in range(height):
         for i in range(SW):
-            kind = SPRITE[j][i]
+            kind = rows[j][i]
             if kind == "ink":
-                put(dx + i - SW // 2, dy + bob + j - SH // 2, (20, 18, 30))
+                put(dx + i - SW // 2, dy + bob + j - height // 2, INK)
             elif kind == "fill":
-                put(dx + i - SW // 2, dy + bob + j - SH // 2, (245, 248, 255))
+                put(dx + i - SW // 2, dy + bob + j - height // 2, PAPER)
 
     if say:
         # The tail lands on his snout, at the front (right) of the sprite.
@@ -303,11 +374,21 @@ SAYS = {"START": "START!", "WHEEL": "SPIN!", "PRESS": "PRESS!", "STOP": "STOP!"}
 SAY_FRAMES = 3  # about a second at 3fps
 
 
+ROLL_FRAMES = 6  # two seconds at 3fps, one full revolution
+
+
 def balloon_timeline(manifest_path, total):
-    """One entry per output frame: what the dolphin is saying, or None."""
+    """
+    Per output frame: what he is saying, and how far through a roll he is.
+
+    Both are keyed off the caption chips in the capture manifest, so a balloon
+    and its caption always appear on the same frame -- and when the demo says
+    the dial was spun, he spins too.
+    """
     says = [None] * total
+    rolls = [None] * total
     if not manifest_path or not os.path.exists(manifest_path):
-        return says
+        return says, rolls
 
     with open(manifest_path) as fh:
         manifest = json.load(fh)
@@ -315,21 +396,28 @@ def balloon_timeline(manifest_path, total):
     n, previous = 0, None
     for entry in manifest:
         chip = entry.get("chip")
-        if chip and chip != previous and chip in SAYS:
-            for k in range(n, min(n + SAY_FRAMES, total)):
-                says[k] = SAYS[chip]
+        if chip and chip != previous:
+            if chip in SAYS:
+                for k in range(n, min(n + SAY_FRAMES, total)):
+                    says[k] = SAYS[chip]
+            if chip == "WHEEL":
+                for k in range(min(ROLL_FRAMES, total - n)):
+                    rolls[n + k] = 2 * math.pi * k / ROLL_FRAMES
         if chip:
             previous = chip
         n += max(1, int(entry.get("hold", 1)))
-    return says
+    return says, rolls
 
 
 OUT = arg("--out", "docs/backdrop")
 MANIFEST = arg("--manifest", None)
 TOTAL = int(arg("--frames", 59))
 os.makedirs(OUT, exist_ok=True)
-says = balloon_timeline(MANIFEST, TOTAL)
+says, rolls = balloon_timeline(MANIFEST, TOTAL)
 for n in range(TOTAL):
-    png(frame(n, TOTAL, says[n]), W * SCALE, H * SCALE, os.path.join(OUT, f"bg_{n:03d}.png"))
+    png(frame(n, TOTAL, says[n], rolls[n]), W * SCALE, H * SCALE,
+        os.path.join(OUT, f"bg_{n:03d}.png"))
 spoken = sum(1 for x in says if x)
-print(f"wrote {TOTAL} frames to {OUT} ({W * SCALE}x{H * SCALE}); {spoken} with a balloon")
+spun = sum(1 for x in rolls if x is not None)
+print(f"wrote {TOTAL} frames to {OUT} ({W * SCALE}x{H * SCALE}); "
+      f"{spoken} with a balloon, {spun} mid-roll")

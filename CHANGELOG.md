@@ -24,6 +24,14 @@ will not be cut without one.
 - **The demo ran too fast to read.** Halved to 3 frames per second, so the
   shorter captions are on screen long enough to actually be read.
 
+### Added
+
+- **The dolphin reacts to inputs.** A comic speech balloon — heavy outline,
+  drop shadow, 5×7 pixel font, all drawn with the standard library — says
+  `START!`, `SPIN!` or `PRESS!` for about a second on each input, and he barrel
+  rolls when the dial is spun. Both are keyed off the same caption chips the
+  caption bar uses, so they always land on the same frame.
+
 ## [1.1.0] - 2026-09-06
 
 First release since the device gained firmware 1.2.3 (device API `27.5.0`, up
