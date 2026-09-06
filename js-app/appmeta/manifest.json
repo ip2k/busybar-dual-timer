@@ -5,6 +5,6 @@
   "version": "0.1.0",
   "description": "Two countdowns, A and B. On-device port probe.",
   "author": "ip2k",
-  "heap_size_kib": 64,
+  "heap_size_kib": 192,
   "debug": false
 }

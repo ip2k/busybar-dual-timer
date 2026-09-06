@@ -203,6 +203,55 @@ than queue them.** `js-app/src/main.ts` does this with a `drawInFlight` flag and
 counts what it drops. It is a change in architecture, not a tuning knob — and it
 sets the real frame-rate ceiling for an on-device widget.
 
+### An unread response body leaks the whole request
+
+Worse than the thread cost, and the thing that actually took the device down
+three times.
+
+In `js_fetch.c`, once the promise resolves the response is marked
+`ChildStatusRunning` (line ~381). While it stays unread, **every incoming body
+chunk is queued rather than discarded** (line ~409), and the `JsFetch` is freed
+only when promise, response *and* sink are all done (line ~244).
+
+So this leaks, permanently, every time it runs:
+
+```js
+fetch(request).then((response) => { /* never reads the body */ });
+```
+
+The request struct, its thread and all of its queued body data are never
+reclaimed. At one draw per frame it is a countdown to a reboot.
+
+**Always consume the body**, even when the result is of no interest:
+
+```js
+fetch(request).then((response) => response.text());
+```
+
+This is easy to get wrong precisely because the off-device client is written
+the other way — it fires draws and never awaits them, which is correct over a
+real network stack.
+
+### Verify the bundle offline before installing it
+
+Three consecutive on-device runs rebooted the Bar, and each attempt costs a
+physical reboot and a person standing at the device. `test/js-app-harness.mjs`
+runs the built bundle under Node against stubs for `fetch`, `Request`,
+`localStorage` and `console`:
+
+```bash
+npm run test:js-app
+```
+
+It asserts the bundle parses, that control flow reaches the end, that every
+request goes to loopback with a valid JSON body, and — the one that matters —
+**that no response body is left unread**. It caught a real leak in
+`clearDisplay()` on its first run, and a double-fired LED notification on its
+second.
+
+It cannot say anything about firmware memory, threads or timing. Those still
+need the device. But a bundle that fails here has no business being installed.
+
 ### Modules do not resolve, so the app must be one file
 
 `js_runner.c` parses the entry script with `JERRY_PARSE_MODULE` and then calls

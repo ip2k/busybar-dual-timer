@@ -39,7 +39,8 @@
     "dev": "node --experimental-strip-types src/index.ts",
     "test": "node --experimental-strip-types test/smoke.ts",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test:js-app": "node tools/js-app.mjs build && node test/js-app-harness.mjs"
   },
   "publishConfig": {
     "access": "public"

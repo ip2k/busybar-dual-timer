@@ -31,6 +31,28 @@ const BASE = 'http://127.0.0.1';
 
 const TICK_MS = 200;
 
+/* ------------------------------------------------------------- breadcrumbs */
+
+/**
+ * Record how far the script got, in storage rather than in the log.
+ *
+ * `console` output goes to an in-memory ring buffer that `POST /api/log_dump`
+ * snapshots. A crash that reboots the device clears it, so the log tells you
+ * nothing about the run that killed it — which is exactly the run you need.
+ *
+ * `localStorage.setItem` flushes to /ext/apps_data/jsrunner on every call, so a
+ * breadcrumb written here outlives the reboot and can be fetched afterwards
+ * with `tools/js-app.mjs crumbs`.
+ */
+function mark(stage: string): void {
+  try {
+    localStorage.setItem('stage', stage);
+    localStorage.setItem('at', String(Date.now()));
+  } catch (e) {
+    console.error('[mark] failed:', String(e));
+  }
+}
+
 /* ------------------------------------------------------------------ probe */
 
 /**
@@ -165,11 +187,19 @@ function draw(payload: DrawPayload, report = false): void {
       body: JSON.stringify(payload),
     }),
   )
-    .then((response: { status?: number }) => {
+    // The body MUST be consumed. In js_fetch.c the JsFetch is freed only once
+    // promise, response and sink are all done (line ~244), and while the
+    // response is unread every incoming chunk is queued instead (line ~409).
+    // A `.then` that ignores the body therefore leaks the whole request, its
+    // queued data and its thread, permanently. This was rebooting the device.
+    .then((response: { status?: number; text: () => Promise<string> }) =>
+      response.text().then(() => response.status),
+    )
+    .then((status: number | undefined) => {
       drawInFlight = false;
       // Only the first frame is reported. A draw that is rejected every tick
       // would otherwise bury the log, and the first one tells us what we need.
-      if (report) console.info('[draw] first frame status:', String(response.status));
+      if (report) console.info('[draw] first frame status:', String(status));
     })
     .catch((e: unknown) => {
       drawInFlight = false;
@@ -178,86 +208,13 @@ function draw(payload: DrawPayload, report = false): void {
 }
 
 function clearDisplay(): void {
-  fetch(
-    new Request(`${BASE}/api/display/draw?application_name=${APP_ID}`, { method: 'DELETE' }),
-  ).catch(() => {
-    /* nothing useful to do */
-  });
-}
-
-/* ----------------------------------------------------------- timing probe */
-
-function stats(values: number[]): string {
-  const sorted = values.slice().sort((a, b) => a - b);
-  const median = sorted[Math.floor(sorted.length / 2)];
-  const total = values.reduce((a, b) => a + b, 0);
-  return `n=${values.length} min=${sorted[0]} median=${median} max=${sorted[sorted.length - 1]} mean=${Math.round(total / values.length)}`;
-}
-
-/**
- * Measure what `setInterval` actually delivers, with and without a draw on each
- * tick. The off-device client ticks at 200ms and redraws whenever the frame
- * changes; whether that model survives on-device is the question, and the first
- * run suggested strongly that it does not.
- */
-function measureInterval(samples: number, drawEachTick: boolean): Promise<number[]> {
-  return new Promise((resolve) => {
-    const deltas: number[] = [];
-    let last = Date.now();
-    let n = 0;
-    const handle = setInterval(() => {
-      const now = Date.now();
-      deltas.push(now - last);
-      last = now;
-      if (drawEachTick) {
-        draw({
-          application_name: APP_ID,
-          priority: 95,
-          elements: [
-            {
-              id: 'probe',
-              type: 'text',
-              x: 36,
-              y: 8,
-              align: 'center',
-              display: 'front',
-              text: String(n),
-              font: 'small',
-              color: '#333333FF',
-            },
-          ],
-        });
-      }
-      if (++n >= samples) {
-        clearInterval(handle);
-        resolve(deltas);
-      }
-    }, TICK_MS);
-  });
-}
-
-/** Round-trip time for a request that is awaited, so they never overlap. */
-async function measureFetchRtt(samples: number): Promise<number[]> {
-  const out: number[] = [];
-  for (let i = 0; i < samples; i++) {
-    const started = Date.now();
-    try {
-      await fetch(new Request(`${BASE}/api/status`, { method: 'GET' }));
-    } catch (e) {
-      console.error('[timing] fetch failed:', String(e));
-    }
-    out.push(Date.now() - started);
-  }
-  return out;
-}
-
-async function probeTiming(): Promise<void> {
-  console.info('[timing] requested interval is', String(TICK_MS), 'ms');
-  console.info('[timing] interval, no I/O:      ', stats(await measureInterval(15, false)));
-  drawsSkipped = 0;
-  console.info('[timing] interval, guarded draw:  ', stats(await measureInterval(15, true)));
-  console.info('[timing] frames dropped for backpressure:', String(drawsSkipped), 'of 15');
-  console.info('[timing] awaited fetch RTT:     ', stats(await measureFetchRtt(8)));
+  fetch(new Request(`${BASE}/api/display/draw?application_name=${APP_ID}`, { method: 'DELETE' }))
+    // Consume the body even here, where the result is of no interest: an
+    // unread body leaks the request regardless of whether anyone wanted it.
+    .then((response: { text: () => Promise<string> }) => response.text())
+    .catch(() => {
+      /* nothing useful to do */
+    });
 }
 
 /* -------------------------------------------------------------------- run */
@@ -289,6 +246,7 @@ function playChime(): void {
       body: JSON.stringify({ application_name: APP_ID, stock_path: STOCK_SOUND }),
     }),
   )
+    .then((response: { text: () => Promise<string> }) => response.text())
     .then(() => {
       console.info('[audio] play requested (a 200 here means nothing; listen instead)');
     })
@@ -297,24 +255,28 @@ function playChime(): void {
     });
 }
 
-async function main(): Promise<void> {
+function main(): void {
+  mark('start');
   console.info('[dual-timer] on-device probe starting, app id', APP_ID);
   probeGlobals();
+  mark('globals-done');
   probeLanguage();
   probeModules();
-  await probeTiming();
+  mark('probes-done');
 
   const timer = new DualTimer(TIMERS);
   let lastSignature = '';
   let ticks = 0;
   let finished = 0;
   let alarmStartedAt = 0;
+  let ledFired = false;
   let lastInverted: boolean | null = null;
   let firstDrawReported = false;
 
   // Auto-start, because there is no way to read the buttons: the runtime has no
   // WebSocket and the HTTP API only *sends* input, never reports it. This is
   // the single blocker documented in docs/js-port.md.
+  mark('timer-started');
   timer.toggle();
   console.info('[dual-timer] started A (no input binding exists, so this is automatic)');
 
@@ -324,6 +286,8 @@ async function main(): Promise<void> {
     if (timer.checkExpiry()) {
       finished++;
       alarmStartedAt = Date.now();
+      mark('expired-' + String(finished));
+      ledFired = false;
       console.info('[dual-timer] expired:', timer.snapshot().label);
       playChime();
     }
@@ -331,7 +295,11 @@ async function main(): Promise<void> {
     const snapshot = timer.snapshot();
     const expired = snapshot.phase === 'expired';
     const alarmElapsed = expired ? Date.now() - alarmStartedAt : 0;
-    const firstAlarmTick = expired && alarmElapsed < TICK_MS * 2;
+    // A latch, not a time window. The window version fired twice whenever two
+    // ticks landed inside it, which restarts the firmware's one-shot LED
+    // notification instead of leaving it to run.
+    const firstAlarmTick = expired && !ledFired;
+    if (firstAlarmTick) ledFired = true;
 
     // Blink every other tick, so a full invert/normal cycle is 800ms — slow
     // enough to be seen across a room rather than read as a flicker.
@@ -376,12 +344,16 @@ async function main(): Promise<void> {
       } else {
         clearInterval(handle);
         clearDisplay();
+        mark('complete');
         console.info('[dual-timer] done after', ticks, 'ticks; both timers ran to expiry');
       }
     }
   }, TICK_MS);
 }
 
-main().catch((e: unknown) => {
+try {
+  main();
+} catch (e) {
+  mark('fatal:' + String(e));
   console.error('[dual-timer] fatal:', String(e));
-});
+}

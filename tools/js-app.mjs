@@ -7,6 +7,7 @@
  *   node tools/js-app.mjs enable     switch on JS apps in the APPS menu
  *   node tools/js-app.mjs disable    switch them off again
  *   node tools/js-app.mjs logs       dump the device log and show our lines
+ *   node tools/js-app.mjs crumbs     read breadcrumbs that survive a crash
  *   node tools/js-app.mjs list       show what is installed in /ext/user_assets
  *   node tools/js-app.mjs remove     delete the app from the Bar
  *
@@ -67,6 +68,49 @@ function strip(source) {
     .replace(/^(\s*)export\s+(?=(?:default\s+)?(?:async\s+)?(?:class|function|const|let|var)\b)/gm, '$1');
 }
 
+/**
+ * Strip comments. This repo comments heavily on purpose, which is right for the
+ * source and wrong for the device: the entire script is read into a JS heap of
+ * at most 256 KiB and parsed there, so prose costs real memory. Naive but safe
+ * enough here — it skips anything inside a string or a regex literal.
+ */
+function stripComments(source) {
+  let out = '';
+  let i = 0;
+  const n = source.length;
+  while (i < n) {
+    const c = source[i];
+    const next = source[i + 1];
+    if (c === '/' && next === '/') {
+      while (i < n && source[i] !== '\n') i++;
+    } else if (c === '/' && next === '*') {
+      i += 2;
+      while (i < n && !(source[i] === '*' && source[i + 1] === '/')) i++;
+      i += 2;
+    } else if (c === '"' || c === "'" || c === '`') {
+      const quote = c;
+      out += source[i++];
+      while (i < n) {
+        if (source[i] === '\\') {
+          out += source[i] + (source[i + 1] ?? '');
+          i += 2;
+          continue;
+        }
+        out += source[i];
+        if (source[i] === quote) {
+          i++;
+          break;
+        }
+        i++;
+      }
+    } else {
+      out += source[i++];
+    }
+  }
+  // Collapse the blank lines the stripping leaves behind.
+  return out.replace(/\n{3,}/g, '\n\n');
+}
+
 /** Top-level declarations, used to catch collisions between concatenated files. */
 function declarations(source) {
   const names = [];
@@ -108,9 +152,7 @@ function build() {
     '',
   ].join('\n');
 
-  const body = modules
-    .map((m) => `// ---- ${m.path.slice(BUILD.length + 1)}\n${strip(m.source)}`)
-    .join('\n');
+  const body = modules.map((m) => stripComments(strip(m.source))).join('\n');
 
   const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'));
   const appDir = join(OUT_DIR, manifest.id);
@@ -121,7 +163,11 @@ function build() {
   writeFileSync(join(appDir, 'scripts', 'main.js'), bundle);
   writeFileSync(join(appDir, 'appmeta', 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 
-  console.log(`bundled ${modules.length} modules -> ${Buffer.byteLength(bundle)} bytes`);
+  const raw = modules.reduce((total, m) => total + Buffer.byteLength(m.source), 0);
+  console.log(
+    `bundled ${modules.length} modules -> ${Buffer.byteLength(bundle)} bytes ` +
+      `(${raw} before comment stripping)`,
+  );
   console.log(`  modules: ${modules.map((m) => m.path.split('/').pop()).join(', ')}`);
   console.log(`  app id:  ${manifest.id} (heap ${manifest.heap_size_kib ?? 32} KiB)`);
   console.log(`  output:  ${appDir}`);
@@ -184,6 +230,23 @@ async function logs() {
   console.log(lines.length ? lines.join('\n') : '(no JS runner lines in the log buffer)');
 }
 
+/**
+ * Read the breadcrumbs the app leaves in localStorage.
+ *
+ * These survive a crash, which the console log does not: log_dump snapshots an
+ * in-memory buffer that a reboot clears, so after a device-killing run the log
+ * has nothing and this has the last stage reached.
+ */
+async function crumbs() {
+  const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'));
+  const path = `/ext/apps_data/jsrunner/${manifest.id}.localstorage.json`;
+  try {
+    console.log(await call('GET', `/api/storage/read?path=${path}`));
+  } catch (e) {
+    console.log(`no breadcrumbs at ${path} (${e.message})`);
+  }
+}
+
 async function list() {
   const listing = JSON.parse(await call('GET', `/api/storage/list?path=${APPS_ROOT}`));
   for (const entry of listing.list) console.log(`${entry.type}\t${entry.name}`);
@@ -229,7 +292,7 @@ async function disable() {
   console.log(`disabled: ${JS_FLAG} removed`);
 }
 
-const commands = { build, install, enable, disable, logs, list, remove };
+const commands = { build, install, enable, disable, logs, crumbs, list, remove };
 const command = process.argv[2];
 if (!commands[command]) {
   console.error(`usage: node tools/js-app.mjs <${Object.keys(commands).join('|')}> [--host <addr>]`);
