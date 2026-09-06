@@ -1,0 +1,10 @@
+{
+  "format_version": 1,
+  "id": "dev.ip2k.dualtimer",
+  "name": "Dual Timer",
+  "version": "0.1.0",
+  "description": "Two countdowns, A and B. On-device port probe.",
+  "author": "ip2k",
+  "heap_size_kib": 64,
+  "debug": false
+}

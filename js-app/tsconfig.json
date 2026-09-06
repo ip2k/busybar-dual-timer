@@ -1,0 +1,19 @@
+{
+  // Device build. Emits ES2018 so nothing depends on syntax JerryScript may not
+  // have (`??` and `?.` are downlevelled); `lib` stays modern because this
+  // config still has to typecheck the Node-side modules that `main.ts` pulls in
+  // for their *types* only. Those imports are erased, so no Node code reaches
+  // the bundle — see docs/js-port.md on splitting the types out properly.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2018",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "rootDir": "..",
+    "outDir": "../.js-build",
+    "sourceMap": false,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"]
+}
