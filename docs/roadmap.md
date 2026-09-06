@@ -54,6 +54,17 @@ feel sluggish — that window is the price of keeping reset off BACK.
 
 ## Port to an on-device app when the JS SDK ships
 
+**Attempted, 2026-09-06.** Firmware 1.2.3 shipped a JerryScript runtime and an
+app format, and the port got as far as running the real timer state machine
+on-device with accurate timing, audio and a firmware-rendered countdown — then
+stopped, because a JS app has no way to read the buttons. The work, the tooling
+and the findings are on the [`js-runtime-port`](https://github.com/ip2k/busybar-dual-timer/tree/js-runtime-port)
+branch: see [docs/js-port.md](js-port.md) for the full write-up and
+[docs/firmware-feedback.md](firmware-feedback.md) for the summary sent upstream.
+
+The original note, still accurate about intent:
+
+
 The intent is to make this a real BUSY Bar app rather than a remote client, once
 BUSY release their JS SDK. Everything off-device is a consequence of what the
 platform supports today.

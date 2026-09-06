@@ -623,6 +623,34 @@ what has actually been proven on hardware, and what hasn't.
 
 ---
 
+## Running on the Bar itself
+
+Firmware **1.2.3** added an on-device JavaScript runtime, so we tried to move
+this app onto the Bar. It got a long way — the real timer state machine runs
+on-device unmodified and keeps accurate time, audio works, and the display can
+be driven by a firmware-rendered countdown — and then stopped on one thing:
+
+**A JS app cannot read input.** There is no WebSocket binding, so the status
+stream carrying button and dial events is unreachable, and the HTTP API only
+*sends* input, never reports it. A timer you cannot start is not a timer.
+
+So this remains an off-device app for now. The attempt is preserved on the
+[`js-runtime-port`](https://github.com/ip2k/busybar-dual-timer/tree/js-runtime-port)
+branch, along with a working app package, a bundler, an installer and an offline
+harness — ready for the day an input binding appears.
+
+- **[docs/js-port.md](docs/js-port.md)** — the full write-up: what the runtime
+  provides, what it costs, and a module-by-module estimate of the port
+- **[docs/firmware-feedback.md](docs/firmware-feedback.md)** — the short version
+  sent to the firmware team: what blocked us and what would help most
+
+Some of it applies to *this* app too, whether or not the port ever happens —
+`countdown` elements, `z_index`, `display_until` and selective element deletion
+are all in [docs/busy-bar-api.md](docs/busy-bar-api.md) and
+[docs/roadmap.md](docs/roadmap.md).
+
+---
+
 ## Links
 
 - [BUSY Bar documentation](https://docs.busy.app/)

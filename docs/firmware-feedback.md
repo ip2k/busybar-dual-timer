@@ -6,7 +6,21 @@ firmware **1.2.3** (device API `27.5.0`).
 Context: [busybar-dual-timer](https://github.com/ip2k/busybar-dual-timer) is two
 configurable countdowns driven off-device over the local HTTP API. When 1.2.3
 shipped a JS runtime we tried to move it on-device. The attempt is on the
-`js-runtime-port` branch, with full findings in `docs/js-port.md`.
+[`js-runtime-port`](https://github.com/ip2k/busybar-dual-timer/tree/js-runtime-port)
+branch.
+
+**Where to read more:**
+
+| | |
+| --- | --- |
+| [docs/js-port.md](js-port.md) | The full port write-up — every finding, how each was established, and a module-by-module cost of the port. Everything below is drawn from it. |
+| [js-app/src/main.ts](../js-app/src/main.ts) | The probe app itself. Imports the real timer state machine rather than reimplementing it, and reports what the runtime provides at startup. |
+| [tools/js-app.mjs](../tools/js-app.mjs) | Build, install, read logs, read crash breadcrumbs, enable JS apps. Includes the bundler we needed because sibling modules do not resolve (#5). |
+| [test/js-app-harness.mjs](../test/js-app-harness.mjs) | Runs the built bundle under Node against stubs. Asserts, among other things, that no response body is left unread — see #4. |
+| [docs/busy-bar-api.md](busy-bar-api.md) | Our running notes on the HTTP API, each claim marked verified or inferred, now including what 27.5.0 added. |
+
+Every measurement here can be reproduced with `node tools/js-app.mjs build`,
+`install`, then `logs`.
 
 **We could not complete the port, for one reason** — see #1. Everything else
 below is offered in the spirit of "this was great to work with, here is what

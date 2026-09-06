@@ -1,7 +1,11 @@
 # Porting to the on-device JavaScript runtime
 
+> **Firmware developers:** [docs/firmware-feedback.md](firmware-feedback.md) is
+> the short version — what blocked us and what would help most, ranked. This
+> page is the long version behind it.
+
 Firmware **1.2.3** (device API **27.5.0**, released 2026-09-03) added a
-JavaScript runtime and an app format. `docs/roadmap.md` has always listed
+JavaScript runtime and an app format. [docs/roadmap.md](roadmap.md) has always listed
 "port to an on-device app when the JS SDK ships" as the largest open item, so
 this is the first real chance to close it.
 
@@ -151,7 +155,7 @@ That is an observation channel, not general input — it says what the firmware'
 timer is doing, not what the user pressed. But it is the only feedback path a
 JS app has from the physical controls today, and it makes a different design
 thinkable: drive `/api/busy/profiles/{slot}` and let the firmware own both
-input and display. `docs/roadmap.md` already lists that as an unexplored idea;
+input and display. [docs/roadmap.md](roadmap.md) already lists that as an unexplored idea;
 the JS runtime makes it more interesting, not less.
 
 ## Other findings
@@ -199,7 +203,7 @@ furi_check(request.body.data); // okay to crash - body handling TODO
 So a malformed body is a documented device crash, not a caught exception.
 
 **The rule for any port: at most one request in flight, and drop frames rather
-than queue them.** `js-app/src/main.ts` does this with a `drawInFlight` flag and
+than queue them.** [js-app/src/main.ts](../js-app/src/main.ts) does this with a `drawInFlight` flag and
 counts what it drops. It is a change in architecture, not a tuning knob — and it
 sets the real frame-rate ceiling for an on-device widget.
 
@@ -235,7 +239,7 @@ real network stack.
 ### Verify the bundle offline before installing it
 
 Three consecutive on-device runs rebooted the Bar, and each attempt costs a
-physical reboot and a person standing at the device. `test/js-app-harness.mjs`
+physical reboot and a person standing at the device. [test/js-app-harness.mjs](../test/js-app-harness.mjs)
 runs the built bundle under Node against stubs for `fetch`, `Request`,
 `localStorage` and `console`:
 
@@ -312,7 +316,7 @@ further traffic.
 For an on-device port this is close to decisive: it removes the per-second
 redraw, and with it most of the fetch pressure that caused every problem
 documented above. The cost is losing control of the font and the layout, which
-is why `docs/roadmap.md` still lists it as an open question rather than a plan.
+is why [docs/roadmap.md](roadmap.md) still lists it as an open question rather than a plan.
 It is equally applicable to the off-device client.
 
 **But it has no font.** The schema gives `countdown` only `timestamp`,
@@ -345,7 +349,7 @@ can load `./other.js` off the filesystem.
 The consequence: despite `js_app.h` documenting a `scripts/` directory
 containing `module1.js` and `module2.js`, **only `main.js` can execute**, and a
 multi-module app must be bundled into it. Since this repo forbids runtime
-dependencies, `tools/js-app.mjs` owns a ~30-line bundler that walks the import
+dependencies, [tools/js-app.mjs](../tools/js-app.mjs) owns a ~30-line bundler that walks the import
 graph, strips `import`/`export` and concatenates in dependency order. It
 refuses to build on a top-level name collision, since flattening into one scope
 would otherwise shadow silently.
@@ -508,7 +512,7 @@ wall clock, so a digit change lands up to 200ms late and the lateness wanders.
 Over Wi-Fi a draw costs single-digit milliseconds, so scheduling the next tick
 for just after the next second boundary — `1000 - (Date.now() % 1000)` — would
 make the seconds land crisply. It is a small change to the ticker and nothing
-else. Not done here; noted in `docs/roadmap.md`.
+else. Not done here; noted in [docs/roadmap.md](roadmap.md).
 
 ## Could an on-device app act as a bridge for the laptop client?
 
@@ -579,7 +583,7 @@ too. It is not done on this branch to keep the diff about exploration.
 
 ## Verification status
 
-Per `CONTRIBUTING.md`, claims here are marked for how they were established.
+Per [CONTRIBUTING.md](../CONTRIBUTING.md), claims here are marked for how they were established.
 
 | Claim | Status |
 | --- | --- |
