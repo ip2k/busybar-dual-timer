@@ -156,6 +156,53 @@ the JS runtime makes it more interesting, not less.
 
 ## Other findings
 
+### Every `fetch()` starts a thread, so draws must be serialised
+
+**This is the most important operational finding on this branch, and it is a
+firmware property, not a style preference.**
+
+`js_fetch.c` handles a call by `malloc`-ing a `JsFetch` and then:
+
+```c
+#define FETCH_THREAD_STACK_SIZE (10 * 1024)
+...
+FuriThread* thread =
+    furi_thread_alloc_ex("Fetch", FETCH_THREAD_STACK_SIZE, fetch_thread_callback, instance);
+furi_thread_start(thread);
+```
+
+**One dedicated 10 KiB-stack thread per in-flight request.** There is no pool,
+no queue and no cap on how many may exist at once; the promise returns
+immediately and the thread runs on its own.
+
+The off-device client fires a draw whenever the frame changes and does not wait
+for it. Over a real network stack that is correct. Here it spawns threads
+without bound, and the measured consequences were severe:
+
+- a `setInterval(fn, 200)` actually fired about every **800 ms**
+- one `fetch` promise settled **25 seconds** after it was issued
+- an alarm coded as 40 ticks × 200 ms ran for **32.6 seconds**
+- **the device rebooted** during the run that fired hardest
+
+The reboot cannot be attributed with certainty — `log_dump` snapshots only the
+in-memory buffer, which the restart cleared, and no reset reason is exposed over
+the API. But the mechanism is in the firmware source, the probe was doing
+exactly the thing that mechanism punishes, and nothing else was running.
+
+Two related hazards in the same file, both reached by `furi_check`, which
+panics rather than throwing into JS:
+
+```c
+furi_check(request.body.data); // okay to crash - body handling TODO
+```
+
+So a malformed body is a documented device crash, not a caught exception.
+
+**The rule for any port: at most one request in flight, and drop frames rather
+than queue them.** `js-app/src/main.ts` does this with a `drawInFlight` flag and
+counts what it drops. It is a change in architecture, not a tuning knob — and it
+sets the real frame-rate ceiling for an on-device widget.
+
 ### Modules do not resolve, so the app must be one file
 
 `js_runner.c` parses the entry script with `JERRY_PARSE_MODULE` and then calls
@@ -313,6 +360,8 @@ Per `CONTRIBUTING.md`, claims here are marked for how they were established.
 | The bundle parses and runs on-device | **verified** — see below |
 | `timers.ts` and `render.ts` run unmodified | **verified** — see below |
 | No `performance`, no monotonic clock | **pending** — the first probe was wrong; see below |
+| Each `fetch` starts a 10 KiB-stack thread, uncapped | **verified in source** — `js_fetch.c`; consistent with all measured latencies |
+| Unserialised draws destabilise the device | **observed** — a reboot mid-run; cause not provable, mechanism documented |
 
 ### The run
 

@@ -138,10 +138,27 @@ function probeModules(): void {
 /* ------------------------------------------------------------------- draw */
 
 /**
- * Post a frame. Deliberately fire-and-forget with a `.catch`: a draw that fails
- * must not stop the countdown, exactly as in the off-device client.
+ * At most one draw may be in flight at a time, and a frame is dropped rather
+ * than queued behind one.
+ *
+ * This is not politeness, it is a hard requirement of the runtime. Every
+ * `fetch()` mallocs a `JsFetch` and starts a **dedicated FuriThread with a
+ * 10 KiB stack** (`js_fetch.c`), with no pool, no queue and no cap. Firing one
+ * per tick without waiting spawns threads without bound: it is what made a
+ * "200ms" interval fire every ~800ms, what delayed one promise by 25 seconds,
+ * and — on the evidence — what rebooted the device.
+ *
+ * The off-device client fires draws without awaiting, which is correct there
+ * and dangerous here. Any port must serialise them like this.
  */
+let drawInFlight = false;
+let drawsSkipped = 0;
 function draw(payload: DrawPayload, report = false): void {
+  if (drawInFlight) {
+    drawsSkipped++;
+    return;
+  }
+  drawInFlight = true;
   fetch(
     new Request(`${BASE}/api/display/draw`, {
       method: 'POST',
@@ -149,11 +166,13 @@ function draw(payload: DrawPayload, report = false): void {
     }),
   )
     .then((response: { status?: number }) => {
+      drawInFlight = false;
       // Only the first frame is reported. A draw that is rejected every tick
       // would otherwise bury the log, and the first one tells us what we need.
       if (report) console.info('[draw] first frame status:', String(response.status));
     })
     .catch((e: unknown) => {
+      drawInFlight = false;
       console.error('[draw] failed:', String(e));
     });
 }
@@ -166,6 +185,81 @@ function clearDisplay(): void {
   });
 }
 
+/* ----------------------------------------------------------- timing probe */
+
+function stats(values: number[]): string {
+  const sorted = values.slice().sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  const total = values.reduce((a, b) => a + b, 0);
+  return `n=${values.length} min=${sorted[0]} median=${median} max=${sorted[sorted.length - 1]} mean=${Math.round(total / values.length)}`;
+}
+
+/**
+ * Measure what `setInterval` actually delivers, with and without a draw on each
+ * tick. The off-device client ticks at 200ms and redraws whenever the frame
+ * changes; whether that model survives on-device is the question, and the first
+ * run suggested strongly that it does not.
+ */
+function measureInterval(samples: number, drawEachTick: boolean): Promise<number[]> {
+  return new Promise((resolve) => {
+    const deltas: number[] = [];
+    let last = Date.now();
+    let n = 0;
+    const handle = setInterval(() => {
+      const now = Date.now();
+      deltas.push(now - last);
+      last = now;
+      if (drawEachTick) {
+        draw({
+          application_name: APP_ID,
+          priority: 95,
+          elements: [
+            {
+              id: 'probe',
+              type: 'text',
+              x: 36,
+              y: 8,
+              align: 'center',
+              display: 'front',
+              text: String(n),
+              font: 'small',
+              color: '#333333FF',
+            },
+          ],
+        });
+      }
+      if (++n >= samples) {
+        clearInterval(handle);
+        resolve(deltas);
+      }
+    }, TICK_MS);
+  });
+}
+
+/** Round-trip time for a request that is awaited, so they never overlap. */
+async function measureFetchRtt(samples: number): Promise<number[]> {
+  const out: number[] = [];
+  for (let i = 0; i < samples; i++) {
+    const started = Date.now();
+    try {
+      await fetch(new Request(`${BASE}/api/status`, { method: 'GET' }));
+    } catch (e) {
+      console.error('[timing] fetch failed:', String(e));
+    }
+    out.push(Date.now() - started);
+  }
+  return out;
+}
+
+async function probeTiming(): Promise<void> {
+  console.info('[timing] requested interval is', String(TICK_MS), 'ms');
+  console.info('[timing] interval, no I/O:      ', stats(await measureInterval(15, false)));
+  drawsSkipped = 0;
+  console.info('[timing] interval, guarded draw:  ', stats(await measureInterval(15, true)));
+  console.info('[timing] frames dropped for backpressure:', String(drawsSkipped), 'of 15');
+  console.info('[timing] awaited fetch RTT:     ', stats(await measureFetchRtt(8)));
+}
+
 /* -------------------------------------------------------------------- run */
 
 /** Shortened from the real defaults so a full pass takes well under a minute. */
@@ -174,8 +268,12 @@ const TIMERS: [TimerConfig, TimerConfig] = [
   { label: 'B', seconds: 5, color: '#39FF14FF', ledColor: '#39FF14FF' },
 ];
 
-/** How long to hold the inverting alarm so it is unmistakable to a watcher. */
-const ALARM_TICKS = 40; // 8 seconds at TICK_MS
+/**
+ * How long to hold the inverting alarm. Measured in milliseconds, not ticks:
+ * the first run counted 40 ticks expecting 8 seconds and got 32, because a
+ * "200ms" interval actually fires roughly every 800ms on this runtime.
+ */
+const ALARM_MS = 6000;
 
 /**
  * A device sound, so nothing has to be uploaded first. `POST /api/audio/play`
@@ -199,17 +297,18 @@ function playChime(): void {
     });
 }
 
-function main(): void {
+async function main(): Promise<void> {
   console.info('[dual-timer] on-device probe starting, app id', APP_ID);
   probeGlobals();
   probeLanguage();
   probeModules();
+  await probeTiming();
 
   const timer = new DualTimer(TIMERS);
   let lastSignature = '';
   let ticks = 0;
   let finished = 0;
-  let alarmTicks = 0;
+  let alarmStartedAt = 0;
   let lastInverted: boolean | null = null;
   let firstDrawReported = false;
 
@@ -224,14 +323,15 @@ function main(): void {
 
     if (timer.checkExpiry()) {
       finished++;
-      alarmTicks = 0;
+      alarmStartedAt = Date.now();
       console.info('[dual-timer] expired:', timer.snapshot().label);
       playChime();
     }
 
     const snapshot = timer.snapshot();
     const expired = snapshot.phase === 'expired';
-    if (expired) alarmTicks++;
+    const alarmElapsed = expired ? Date.now() - alarmStartedAt : 0;
+    const firstAlarmTick = expired && alarmElapsed < TICK_MS * 2;
 
     // Blink every other tick, so a full invert/normal cycle is 800ms — slow
     // enough to be seen across a room rather than read as a flicker.
@@ -251,7 +351,7 @@ function main(): void {
         // Fire the firmware's LED notification preset on the tick the timer
         // expires. It is a one-shot three-blink, so re-sending it every frame
         // would restart it constantly; once per expiry is the whole behaviour.
-        ledBlink: expired && alarmTicks === 1,
+        ledBlink: firstAlarmTick,
       },
     );
 
@@ -262,12 +362,12 @@ function main(): void {
       firstDrawReported = true;
     }
 
-    if (expired && alarmTicks === 1) {
+    if (firstAlarmTick) {
       console.info('[dual-timer] LED notification requested, colour', snapshot.ledColor);
     }
 
     // First expiry: let the alarm run, then move to B. Second: hold, then stop.
-    if (expired && alarmTicks >= ALARM_TICKS) {
+    if (expired && alarmElapsed >= ALARM_MS) {
       if (finished === 1) {
         timer.switchTimer();
         timer.toggle();
@@ -282,4 +382,6 @@ function main(): void {
   }, TICK_MS);
 }
 
-main();
+main().catch((e: unknown) => {
+  console.error('[dual-timer] fatal:', String(e));
+});
