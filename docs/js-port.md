@@ -457,6 +457,42 @@ So a per-second redraw is not slow on this runtime, it is impossible. This
 reframes the `countdown` element: it is not an optimisation, it is the only way
 to get a display that updates every second on device.
 
+### Latency scales with request count
+
+The 3.5s figure is not a fixed cost. The same measurement on the 7-request build:
+
+```
+drew 1286583 -> status 1287583   = 1.00s
+drew 1297884 -> status 1298839   = 0.96s
+```
+
+**One second instead of three and a half**, from identical code against an
+identical endpoint. The only difference was how many requests were in flight
+around it. That is the thread-per-fetch model showing up directly: each
+outstanding request is a thread competing for the same scheduler, so latency
+degrades with concurrency rather than staying flat.
+
+Practically: the request budget is not just about memory. Spending it also makes
+every remaining request slower, which drops more frames, which is what made the
+digits skip.
+
+### The countdown element is half the height
+
+Measured from `GET /api/screen?display=0` while a countdown was running, the
+digits occupy **5 rows of the 16-pixel panel**. This project's chosen face,
+`extra_large` (busy_bold_10), is 10 rows. So the firmware's countdown renders at
+half the height and uses under a third of the panel.
+
+It is legible, but it is visibly not what the rest of the device looks like, and
+next to the built-in clock app it reads as an unstyled fallback.
+
+**This is the one thing that would most improve JS apps for a project like
+this**, and it is a small ask: `countdown` already accepts `color`, and `text`
+already accepts `font` from a fixed enum. A `font` field on `CountdownElement`
+would make firmware-side rendering usable without giving up the device's own
+typography — and firmware-side rendering is, on the evidence above, the only way
+to update a display every second on this runtime. Worth raising upstream.
+
 ### Can draws be aligned to the second boundary?
 
 **On device, no** — and the question stops mattering. You would have to issue a
