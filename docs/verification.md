@@ -3,10 +3,64 @@
 What has actually been proven, and how. Keep this honest — it is the difference
 between "the docs say" and "the device does".
 
-Device under test: BUSY Bar at `<bar-ip>`, firmware API `25.0.0`, local
-HTTP API enabled with no auth token.
+Device under test: BUSY Bar at `<bar-ip>`, firmware API `27.5.0` (firmware
+1.2.3) as of 2026-09-09; earlier entries were taken against `25.0.0`. Local
+HTTP API enabled; Wi-Fi runs need a token, USB does not.
 
 ## Verified on hardware
+
+### The remapped control scheme, on firmware 1.2.3 (2026-09-09)
+
+The START / dial mapping had been implemented and tested offline since
+2026-09-02 but never driven by hand on the device. It has now been, during the
+run that confirmed the `Content-Length` fix (below). The device was live at
+`192.168.1.163` over Wi-Fi.
+
+Startup, verbatim:
+
+```
+[bar] 192.168.1.163 firmware API 27.5.0
+[sound] A: uploaded chime.wav (47628 bytes)
+[sound] B: uploaded chime-2.wav (49392 bytes)
+[display] brightness auto (ambient light sensor), was 5
+[stream] connected
+[ready] A=25:00 B=05:00 — start start/pause · dial click switches · dial
+        double-click resets · dial turn ±60s · hold+turn ±5s
+```
+
+| Gesture | How it was made | Result |
+| --- | --- | --- |
+| dial turn | by hand, ~20 detents | `[gesture] dial -01:00 -> 24:00` … `-> 05:00`, one minute per detent, no double-counting |
+| dial turn back | by hand | `[gesture] dial +01:00 -> 05:00` |
+| dial click | by hand | `[gesture] dial click -> timer B (05:00)`, then back to A |
+| START | `POST /api/input?key=start` | `[gesture] start -> running` |
+| START again, 4 s later | `POST /api/input?key=start` | `[gesture] start -> paused` |
+
+Two things are proven here beyond the mapping itself. Dial detents survive the
+round trip without duplicates or drops — the encoder deltas arrive one per
+detent even across a Wi-Fi link. And `POST /api/input` is still a usable stand-in
+for a finger: the synthetic press comes back out of the WebSocket and through
+the same gesture recogniser as a real one, which is what makes unattended
+testing possible.
+
+The panel was read back with `GET /api/screen?display=0` before and after the
+START press and the digits had advanced, so the change reached the LEDs and was
+not merely a log line.
+
+### `node:http` fixes the padded `Content-Length` (2026-09-09)
+
+Against firmware 1.2.3 every `fetch()` call to the device failed with
+`TypeError: terminated` — `api.ts` never got past its opening `GET /api/version`.
+Cause and measurements are in `docs/busy-bar-api.md`; the transport now uses
+`node:http`. Verified three ways:
+
+1. **Isolated.** A local server serving the device's exact bytes fails under
+   `fetch` and succeeds under `node:http`, 10 runs each.
+2. **Regression test.** `npm test` serves the padded header and asserts
+   `version()` reads it. Reverting the transport to `fetch` makes it fail — that
+   was checked, not assumed.
+3. **On the device.** The full startup sequence above, including two asset
+   uploads, a brightness read and write, and per-tick draws.
 
 ### A full run, end to end (2026-09-02)
 

@@ -16,6 +16,7 @@
  * PNG is written by hand. It is a container around a zlib stream, which node
  * already has, so this stays inside the project's zero-dependency rule.
  */
+import { request as httpRequest } from 'node:http';
 import { deflateSync } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
@@ -96,16 +97,46 @@ function png(rgb, width, height, scale = 1) {
 
 /* ------------------------------------------------------------ device ---- */
 
-async function post(path, body) {
-  const r = await fetch(`http://${HOST}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    redirect: 'error',
+/**
+ * One device call over `node:http`.
+ *
+ * Not `fetch`: the Bar pads its `Content-Length` value to a fixed width, and
+ * undici rejects the body as the wrong length when it does. See the comment
+ * in src/api.ts and trap #13 in CLAUDE.md.
+ */
+function call(method, path, body) {
+  const url = new URL(`http://${HOST}${path}`);
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(
+      {
+        host: url.hostname,
+        port: url.port || 80,
+        path: `${url.pathname}${url.search}`,
+        method,
+        headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(5000),
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            reject(new Error(`${method} ${path} -> ${res.statusCode} ${text.slice(0, 200)}`));
+            return;
+          }
+          resolve(text);
+        });
+        res.on('error', reject);
+      },
+    );
+    req.on('error', reject);
+    if (body !== undefined) req.write(JSON.stringify(body));
+    req.end();
   });
-  if (!r.ok) throw new Error(`draw -> ${r.status} ${await r.text()}`);
-  await r.text();
 }
+
+const post = (path, body) => call('POST', path, body);
 
 /**
  * Read the panel back. The body is base64 of raw BGR triples despite the
@@ -113,8 +144,7 @@ async function post(path, body) {
  * the whole reason the colours come out right.
  */
 async function grab() {
-  const r = await fetch(`http://${HOST}/api/screen?display=0`, { redirect: 'error' });
-  const bgr = Buffer.from((await r.text()).trim(), 'base64');
+  const bgr = Buffer.from((await call('GET', '/api/screen?display=0')).trim(), 'base64');
   const rgb = Buffer.alloc(WIDTH * HEIGHT * 3);
   for (let i = 0; i < WIDTH * HEIGHT; i++) {
     rgb[i * 3] = bgr[i * 3 + 2];
@@ -278,7 +308,7 @@ for (const [i, state] of frames.entries()) {
   process.stdout.write(`\r  ${i + 1}/${frames.length}  lit=${String(lit).padStart(4)}   `);
 }
 
-await fetch(`http://${HOST}/api/display/draw?application_name=${APP}`, { method: 'DELETE' }).catch(() => {});
+await call('DELETE', `/api/display/draw?application_name=${APP}`).catch(() => {});
 writeFileSync(join(OUT, 'frames.json'), JSON.stringify(manifest, null, 2) + '\n');
 const outputFrames = manifest.reduce((n, m) => n + m.hold, 0);
 console.log(`\ndone. ${frames.length} PNGs -> ${outputFrames} output frames, in ${OUT}`);

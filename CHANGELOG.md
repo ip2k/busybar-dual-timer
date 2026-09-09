@@ -10,7 +10,32 @@ will not be cut without one.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-09
+
+**Anyone running firmware 1.2.3 should take this release: 1.1.0 cannot talk to
+the device at all.**
+
 ### Fixed
+
+- **Every call to the Bar failed on firmware 1.2.3** with `[fatal] terminated`,
+  before the first line of output. The firmware pads its `Content-Length` value
+  into a fixed-width field — a 24-byte body arrives as `Content-Length: 24`
+  followed by nine spaces. [RFC 7230 §3.2](https://www.rfc-editor.org/rfc/rfc7230#section-3.2)
+  allows that trailing whitespace, and curl, `node:http` and Python all strip
+  it; undici does not, so `fetch()` reads the header as `24`, decides the body
+  it received was the wrong length, and aborts it mid-read with
+  `ResponseContentLengthMismatchError`. The HTTP client is now `node:http`.
+  Leading whitespace is fine and only trailing whitespace breaks, so nothing
+  looks wrong in a debugger, and `node --insecure-http-parser` does not help —
+  the failing check lives in undici's JavaScript, not in llhttp. Measurements
+  and a client-by-client table are in [`docs/busy-bar-api.md`](docs/busy-bar-api.md);
+  the quirk is trap #13 in `CLAUDE.md`. ([`bd82220`])
+- **`terminated` was the entire error message.** The failing call — reading the
+  response body — sat one line outside the `try` that unwraps a `cause`, so the
+  actual reason was discarded. Bodies are now read inside the same error
+  boundary as the request, and the message carries the cause. ([`bd82220`])
+- **`tools/capture-frames.mjs` had the same fault** and could not capture frames
+  from a 1.2.3 device. ([`bd82220`])
 
 - **The demo animation told a confusing story.** The wheel beat adjusted timer A
   *mid-countdown*, so 24:53 plus one click showed 25:53 — arithmetically right
@@ -31,6 +56,22 @@ will not be cut without one.
   `START!`, `SPIN!` or `PRESS!` for about a second on each input, and he barrel
   rolls when the dial is spun. Both are keyed off the same caption chips the
   caption bar uses, so they always land on the same frame.
+
+### Changed
+
+- **Response bodies are capped at 1 MB** and read to completion inside the
+  client. `fetch` had no cap, and a body left unread is a leak — the same
+  mistake cost four device restarts during the on-device port. Every real
+  endpoint answers in tens of bytes. ([`bd82220`])
+
+### Verified
+
+- The **remapped START / dial control scheme**, unverified by hand since it was
+  written on 2026-09-02, was driven on firmware 1.2.3: dial detents adjust one
+  minute each with no duplicates or drops over Wi-Fi, dial click switches A/B,
+  and START starts and pauses. `POST /api/input` still round-trips through the
+  WebSocket into the same gesture recogniser as a real press. See
+  [`docs/verification.md`](docs/verification.md). ([`bd82220`])
 
 ## [1.1.0] - 2026-09-06
 
@@ -171,6 +212,7 @@ off-device over the local HTTP API.
 [1.0.4]: https://github.com/ip2k/busybar-dual-timer/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/ip2k/busybar-dual-timer/compare/v1.0.1...v1.0.3
 [1.0.1]: https://github.com/ip2k/busybar-dual-timer/compare/v1.0.0...v1.0.1
+[1.1.1]: https://github.com/ip2k/busybar-dual-timer/releases/tag/v1.1.1
 [1.0.0]: https://github.com/ip2k/busybar-dual-timer/releases/tag/v1.0.0
 [`6db4d20`]: https://github.com/ip2k/busybar-dual-timer/commit/6db4d20
 [`447f1a9`]: https://github.com/ip2k/busybar-dual-timer/commit/447f1a9
@@ -186,3 +228,4 @@ off-device over the local HTTP API.
 [`0e3df22`]: https://github.com/ip2k/busybar-dual-timer/commit/0e3df22
 [`bbbeef7`]: https://github.com/ip2k/busybar-dual-timer/commit/bbbeef7
 [`b467ffe`]: https://github.com/ip2k/busybar-dual-timer/commit/b467ffe
+[`bd82220`]: https://github.com/ip2k/busybar-dual-timer/commit/bd82220
