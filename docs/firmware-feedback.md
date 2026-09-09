@@ -17,7 +17,7 @@ branch.
 | [js-app/src/main.ts](../js-app/src/main.ts) | The probe app itself. Imports the real timer state machine rather than reimplementing it, and reports what the runtime provides at startup. |
 | [tools/js-app.mjs](../tools/js-app.mjs) | Build, install, read logs, read crash breadcrumbs, enable JS apps. Includes the bundler we needed because sibling modules do not resolve (#5). |
 | [test/js-app-harness.mjs](../test/js-app-harness.mjs) | Runs the built bundle under Node against stubs. Asserts, among other things, that no response body is left unread — see #4. |
-| [docs/busy-bar-api.md](busy-bar-api.md) | Our running notes on the HTTP API, each claim marked verified or inferred, now including what 27.5.0 added. |
+| [docs/busy-bar-api.md](busy-bar-api.md) | Our running notes on the HTTP API, each claim marked verified or inferred, now including what 27.5.0 added and the `Content-Length` measurements in #0. |
 
 Every measurement here can be reproduced with `node tools/js-app.mjs build`,
 `install`, then `logs`.
@@ -32,7 +32,65 @@ existing code moved across unchanged.
 Every claim here was measured on a device running 1.2.3, not inferred from
 source. Where we did read source, we say so.
 
+One item below — the `Content-Length` note — is not about the JS runtime at
+all. It came up afterwards, in the off-device app, and it is small enough to
+fix in a line, so we have put it first rather than burying it.
+
 ---
+
+## 0. `Content-Length` is padded, which trips up Node's `fetch`
+
+Not a JS-runtime issue, and a small one — but it is the only thing here that
+stops an integration dead, and the fix looks like a one-character change.
+
+Responses appear to have their `Content-Length` value written into a
+fixed-width field, so the header goes out padded with trailing spaces. Read off
+the wire with a raw socket, `GET /api/version` is:
+
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 24[9 spaces]
+
+{"api_semver":"27.5.0"}\n         <- exactly 24 bytes, so the count is right
+```
+
+The count is correct and the padding is legal — RFC 7230 §3.2 lets a field
+value be followed by optional whitespace, which the recipient discards. Almost
+everything does exactly that:
+
+| Client | Result |
+| --- | --- |
+| curl | ok |
+| Python `urllib` | ok |
+| Node `node:http` | ok |
+| Chromium `fetch` | ok |
+| Deno `fetch` (hyper) | ok |
+| **Node `fetch` (undici)** | **fails every request** |
+
+undici reports the header as `24`, then decides the body it read was the wrong
+length and aborts it mid-read:
+
+```
+TypeError: terminated
+  cause: ResponseContentLengthMismatchError (UND_ERR_RES_CONTENT_LENGTH_MISMATCH)
+```
+
+We think that is undici being stricter than the spec requires, so it is
+arguably their bug rather than yours. We mention it because of where it lands:
+`fetch` is Node's built-in HTTP client, so it is what most people will reach
+for first, and the failure is total — our off-device app died on its opening
+`GET /api/version` with the single word `terminated`, having made no successful
+call at all. It took a raw socket to see why, because leading whitespace *is*
+tolerated and trailing whitespace is not, so the header looks perfectly normal
+in every debugger and in `curl -v`.
+
+Reproduced 10/10 against a 1.2.3 device, and again against a local server
+serving those exact bytes. We have worked around it by moving to `node:http`.
+
+**Request:** drop the field width when emitting the header, if that is all it
+is. We are happy to re-test a build against the same app and report back.
+
 
 ## 1. There is no way for a JS app to read input
 
