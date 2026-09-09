@@ -1,6 +1,6 @@
 {
   "name": "busybar-dual-timer",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Two configurable countdowns on a BUSY Bar. START starts and pauses, the dial switches A/B, double-click resets, and turning it sets the time.",
   "keywords": [
     "busy-bar",
