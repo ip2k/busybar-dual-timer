@@ -170,6 +170,10 @@ smoke test meaningful. I/O belongs in `api.ts` and orchestration in `index.ts`.
    "modernise" it back. There is a test that serves the device's exact bytes,
    padding included; it fails within seconds if the transport is swapped.
 
+   It is **undici specifically**, not `fetch` everywhere: Chromium's `fetch`,
+   Deno's, curl and Python all read the padded header correctly — all tested.
+   Don't repeat the claim that browsers are affected; they are not.
+
    Two smaller lessons came with it. Leading whitespace is fine and trailing is
    not, so the header *looks* well-formed in every debugger. And the error said
    only `terminated` because the failing call — `response.json()` — sat one

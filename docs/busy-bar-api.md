@@ -618,14 +618,27 @@ Leading whitespace is stripped; trailing whitespace is not. `node --insecure-htt
 does **not** help — the check that fails lives in undici's own JavaScript, not
 in llhttp.
 
-**Consequence for anyone integrating:** use `node:http`, or any HTTP client
-that is not undici. This project moved `src/api.ts` off `fetch` for exactly
-this reason; there is a regression test that serves the padded bytes.
+**It is undici specifically, not `fetch` in general.** Every other client we
+tested reads the padded header correctly, which is part of why this is easy to
+misdiagnose:
 
-This is worth reporting upstream. The fix is a one-character change on the
-firmware side (drop the field width), and until it lands, every browser and
-every modern Node integration with the Bar is broken by default — `fetch` is
-the only HTTP client a browser has.
+| Client | Padded `Content-Length` |
+| --- | --- |
+| Node `fetch` (undici) | **fails** |
+| Node `node:http` | ok |
+| Chromium `fetch`, tested in a browser against the same bytes | ok |
+| Deno `fetch` (hyper) | ok |
+| curl | ok |
+| Python `urllib` / `http.client` | ok |
+
+So a browser dashboard talking to the Bar is fine. What breaks is a Node
+integration written the modern way — and `fetch` is Node's built-in HTTP
+client now, so it is the likely first thing anyone reaches for. This project
+did, and every request failed.
+
+**Consequence for anyone integrating:** on Node, use `node:http`. This project
+moved `src/api.ts` off `fetch` for exactly this reason; there is a regression
+test that serves the padded bytes.
 
 ## What 27.5.0 adds (firmware 1.2.3)
 
