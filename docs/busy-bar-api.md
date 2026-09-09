@@ -569,6 +569,64 @@ Worth doing before adding more experimentally-derived notes here.
 - Protobuf schemas: https://github.com/busy-app/busybar-protobuf
 
 
+## `Content-Length` is padded, and it breaks `fetch()` — verified
+
+**This is the single most disruptive quirk in the API, and it is invisible
+until you use the wrong client.**
+
+The firmware writes its `Content-Length` value into a fixed-width field, so the
+header goes out padded with trailing spaces. Read off the wire with a raw
+socket, `GET /api/version` answers:
+
+```
+HTTP/1.1 200 OK
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Headers: *
+Content-Type: application/json
+Content-Length: 24[9 spaces]
+
+{"api_semver":"27.5.0"}\n          <- exactly 24 bytes, so the number is right
+```
+
+The byte count is correct. The padding is legal: RFC 7230 §3.2 defines a field
+value as optionally followed by OWS, which the recipient discards. curl,
+`node:http`, Python's `http.client` and a raw socket all read it as 24 and are
+perfectly happy.
+
+`fetch()` is not. Under Node (undici) the request resolves, `headers.get('content-length')`
+returns the string `24`, and then reading the body throws:
+
+```
+TypeError: terminated
+  cause: ResponseContentLengthMismatchError: Response body length does not
+         match content-length header  (UND_ERR_RES_CONTENT_LENGTH_MISMATCH)
+```
+
+Every request fails, every time — reproduced 10/10 against the device, and
+again against a local server serving those exact bytes. Measured behaviour:
+
+| `Content-Length` value | `node:http` | `fetch()` |
+| --- | --- | --- |
+| `24` | ok | ok |
+| `024` | ok | ok |
+| ` 24` (leading space) | ok | ok |
+| `24 ` (one trailing space) | ok | **fails** |
+| `24         ` (as the Bar sends it) | ok | **fails** |
+| `24\t` | ok | **fails** |
+
+Leading whitespace is stripped; trailing whitespace is not. `node --insecure-http-parser`
+does **not** help — the check that fails lives in undici's own JavaScript, not
+in llhttp.
+
+**Consequence for anyone integrating:** use `node:http`, or any HTTP client
+that is not undici. This project moved `src/api.ts` off `fetch` for exactly
+this reason; there is a regression test that serves the padded bytes.
+
+This is worth reporting upstream. The fix is a one-character change on the
+firmware side (drop the field width), and until it lands, every browser and
+every modern Node integration with the Bar is broken by default — `fetch` is
+the only HTTP client a browser has.
+
 ## What 27.5.0 adds (firmware 1.2.3)
 
 Checked against `http://<bar>/openapi.yaml` on a device running 1.2.3. The API

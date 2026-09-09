@@ -12,6 +12,7 @@ import { loadConfig } from '../src/config.ts';
 import { BusyBarClient, safeText } from '../src/api.ts';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { createServer as createRawServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DualTimer } from '../src/timers.ts';
@@ -616,6 +617,32 @@ console.log('config safety: ok');
   // Device-controlled strings are made printable before they reach a log line.
   assert.doesNotMatch(safeText('a\u001b[31mb\u0007c'), /[\u0000-\u001f]/);
   assert.equal(safeText('x'.repeat(500)).length, 201);
+
+  // The Bar pads its Content-Length out to a fixed width, so a 24-byte body is
+  // announced as "24" followed by nine spaces. RFC 7230 allows that trailing
+  // whitespace and every sane client strips it — but `fetch()` reads the header
+  // as 24 and then decides the body it got was the wrong length, aborting it
+  // with a bare `TypeError: terminated`. That is why this client is built on
+  // `node:http`. Serve the device's exact bytes and insist we can read them.
+  {
+    const body = '{"api_semver":"27.5.0"}\n';
+    const padded = createRawServer((socket) => {
+      socket.on('data', () => {
+        socket.write(
+          'HTTP/1.1 200 OK\r\n' +
+            'Content-Type: application/json\r\n' +
+            // The padding is the whole point of this test — don't tidy it away.
+            `Content-Length: ${body.length}         \r\n\r\n` +
+            body,
+        );
+      });
+    });
+    await new Promise<void>((resolve) => padded.listen(0, '127.0.0.1', resolve));
+    const { port } = padded.address() as { port: number };
+    const version = await new BusyBarClient(`127.0.0.1:${port}`).version();
+    padded.close();
+    assert.equal(version.api_semver, '27.5.0', 'a padded Content-Length must still be readable');
+  }
 
   // A redirect from the device is refused, never followed: following one would
   // hand the token header and the request body to whatever host it named.

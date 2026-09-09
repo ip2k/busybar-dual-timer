@@ -1,3 +1,5 @@
+import { request as httpRequest, type IncomingMessage } from 'node:http';
+
 import { parseState, type InputEvent } from './proto.ts';
 
 /**
@@ -70,6 +72,30 @@ export interface DrawPayload {
   elements: DisplayElement[];
 }
 
+/** How long a single device call may take, headers and body together. */
+const REQUEST_TIMEOUT_MS = 5000;
+
+/**
+ * Most the device is allowed to say in one response body.
+ *
+ * Every endpoint this client touches answers in tens of bytes; the largest
+ * thing the Bar can produce at all is a base64 screen dump at a few KB. The
+ * cap exists so a device that starts streaming forever cannot grow this
+ * process's heap without bound.
+ */
+const MAX_BODY_BYTES = 1024 * 1024;
+
+interface RequestOptions {
+  headers?: Record<string, string>;
+  body?: string | Uint8Array;
+}
+
+/** A device reply, already read to the end. */
+interface DeviceResponse {
+  status: number;
+  body: string;
+}
+
 export class BusyBarClient {
   private readonly base: string;
   private readonly headers: Record<string, string>;
@@ -79,37 +105,91 @@ export class BusyBarClient {
     this.headers = apiToken ? { 'X-API-Token': apiToken } : {};
   }
 
-  private async request(method: string, path: string, init: RequestInit = {}): Promise<Response> {
-    let response: Response;
+  /**
+   * One device call, over `node:http` rather than `fetch`.
+   *
+   * This is deliberate, and it is not a style preference. The Bar pads its
+   * `Content-Length` value out to a fixed width — `Content-Length: 24` arrives
+   * with nine trailing spaces. RFC 7230 allows that (a field value may be
+   * followed by optional whitespace, which the recipient strips), and
+   * `node:http`, curl and every other client here read it as 24. `fetch()`
+   * does not: undici reports the header as `24` but its own end-of-message
+   * accounting disagrees, so it aborts the body mid-read and throws
+   * `TypeError: terminated`. Every single call to the device failed on the
+   * first byte of the first response. See `docs/busy-bar-api.md`.
+   *
+   * The body is read to the end here rather than handed back as a stream, so
+   * no caller can leave one dangling.
+   */
+  private async request(method: string, path: string, options: RequestOptions = {}): Promise<DeviceResponse> {
+    let response: DeviceResponse & { location?: string };
     try {
-      response = await fetch(`${this.base}${path}`, {
-        ...init,
-        method,
-        headers: { ...this.headers, ...(init.headers as Record<string, string> | undefined) },
-        signal: AbortSignal.timeout(5000),
-        // The Bar never redirects. Following one would send the token header
-        // and the request body to whatever host the response named — and on
-        // plain HTTP that is anyone on the path, not only the device. A
-        // redirect is therefore a failed request, never a new destination.
-        redirect: 'error',
-      });
+      response = await this.send(method, path, options);
     } catch (error) {
-      // fetch wraps the real reason ("unexpected redirect", ECONNREFUSED) in a
-      // bare "fetch failed"; surface it so a misconfiguration is diagnosable.
+      // The real reason is often one `cause` down ("other side closed",
+      // ECONNREFUSED); surface it, or a misconfiguration is undiagnosable.
       const cause = (error as Error & { cause?: Error }).cause;
       const detail = cause?.message ? ` (${safeText(cause.message)})` : '';
       throw new Error(`${method} ${path} -> ${safeText((error as Error).message)}${detail}`);
     }
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new Error(`${method} ${path} -> ${response.status} ${safeText(body)}`);
+    // `node:http` never follows a redirect on its own, which is what we want:
+    // following one would send the token header and the request body to
+    // whatever host the response named, and on plain HTTP that is anyone on
+    // the path. A redirect is a failed request, never a new destination.
+    if (response.status >= 300 && response.status < 400) {
+      throw new Error(`${method} ${path} -> ${response.status}, refusing to follow a redirect`);
+    }
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`${method} ${path} -> ${response.status} ${safeText(response.body)}`);
     }
     return response;
   }
 
+  private send(method: string, path: string, options: RequestOptions): Promise<DeviceResponse> {
+    const url = new URL(`${this.base}${path}`);
+    return new Promise<DeviceResponse>((resolve, reject) => {
+      const req = httpRequest(
+        {
+          host: url.hostname,
+          port: url.port || 80,
+          path: `${url.pathname}${url.search}`,
+          method,
+          headers: { ...this.headers, ...options.headers },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        },
+        (res: IncomingMessage) => {
+          const chunks: Buffer[] = [];
+          let size = 0;
+          res.on('data', (chunk: Buffer) => {
+            size += chunk.length;
+            if (size > MAX_BODY_BYTES) {
+              req.destroy(new Error(`response exceeded ${MAX_BODY_BYTES} bytes`));
+              return;
+            }
+            chunks.push(chunk);
+          });
+          res.on('end', () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') }));
+          res.on('error', reject);
+        },
+      );
+      req.on('error', reject);
+      if (options.body !== undefined) req.write(options.body);
+      req.end();
+    });
+  }
+
+  /** Parse a device reply as JSON, blaming the device rather than crashing. */
+  private static parseJson<T>(method: string, path: string, response: DeviceResponse): T {
+    try {
+      return JSON.parse(response.body) as T;
+    } catch {
+      throw new Error(`${method} ${path} -> reply was not JSON: ${safeText(response.body, 80)}`);
+    }
+  }
+
   async version(): Promise<{ api_semver?: string }> {
     const response = await this.request('GET', '/api/version');
-    return (await response.json()) as { api_semver?: string };
+    return BusyBarClient.parseJson<{ api_semver?: string }>('GET', '/api/version', response);
   }
 
   async draw(payload: DrawPayload): Promise<void> {
@@ -127,7 +207,7 @@ export class BusyBarClient {
     const query = `application_name=${encodeURIComponent(applicationName)}&file=${encodeURIComponent(file)}`;
     await this.request('POST', `/api/assets/upload?${query}`, {
       headers: { 'Content-Type': 'application/octet-stream' },
-      body: data as unknown as BodyInit,
+      body: data,
     });
   }
 
@@ -143,7 +223,7 @@ export class BusyBarClient {
   async getBrightness(): Promise<string | null> {
     try {
       const response = await this.request('GET', '/api/display/brightness');
-      const body = (await response.json()) as { value?: unknown };
+      const body = BusyBarClient.parseJson<{ value?: unknown }>('GET', '/api/display/brightness', response);
       return typeof body.value === 'string' ? safeText(body.value, 16) : null;
     } catch {
       return null;

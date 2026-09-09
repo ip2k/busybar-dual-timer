@@ -15,7 +15,7 @@ your network.
 **It makes network calls to exactly one host: the Bar you configured.** There
 are two, both built from `device.host`:
 
-- `fetch()` to `http://<device.host>/api/...`
+- `node:http` requests to `http://<device.host>/api/...`
 - a WebSocket to `ws://<device.host>/api/status/ws`
 
 There is no telemetry, no update check, and no third-party endpoint. You can
@@ -25,8 +25,13 @@ codebase.
 **It refuses HTTP redirects.** The Bar never redirects, and following one
 would send the token header and the request body to whatever host the
 response named — on plain HTTP, that is anyone on the path, not only the
-device. `fetch` runs with `redirect: 'error'`, so a redirect is a failed
-request, never a new destination. There is a test for it.
+device. `node:http` does not follow redirects on its own, and any 3xx is
+turned into a failed request rather than a new destination. There is a test
+for it.
+
+**It caps what the device can say.** A response body is read to the end in
+memory, so a reply is refused past 1 MB rather than being allowed to grow the
+process's heap without bound. Every real endpoint answers in tens of bytes.
 
 **It has zero runtime dependencies.** Nothing is pulled in at install time, so
 there is no transitive package surface. `npm audit` reports nothing because

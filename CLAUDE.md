@@ -12,9 +12,9 @@ local HTTP API; nothing is installed on the Bar itself.
 Status: **working, and driven through a full cycle against real hardware**
 (2026-09-02) over both USB and Wi-Fi — startup, input stream, gestures by hand,
 expiry, audio (verified by ear), draw and clean shutdown all proven, with no
-draw failures or stream drops across a 35-minute soak. The control scheme was
-then remapped across START / BACK / dial; that mapping is implemented and
-tested offline but **not yet re-verified by hand on the device**. See
+draw failures or stream drops across a 35-minute soak. The remapped START /
+dial control scheme was **re-verified by hand on firmware 1.2.3 (2026-09-09)**,
+in the same run that confirmed the `node:http` transport fix. See
 `docs/verification.md` for exactly what has and hasn't been proven, and
 `docs/roadmap.md` for what's next.
 
@@ -23,7 +23,7 @@ tested offline but **not yet re-verified by hand on the device**. See
 | | |
 | --- | --- |
 | Device | BUSY Bar — `10.0.4.20` over USB, or its DHCP address on Wi-Fi |
-| Firmware API | `25.0.0` |
+| Firmware API | `27.5.0` (firmware 1.2.3) |
 | Local HTTP API | must be enabled on the device; Wi-Fi needs a token, USB does not |
 | OpenAPI spec | `http://<bar>/openapi.yaml` (**not** `/openapi.json` — 404s) |
 | Rendered docs | `http://<bar>/docs/` |
@@ -156,6 +156,25 @@ smoke test meaningful. I/O belongs in `api.ts` and orchestration in `index.ts`.
 12. **The stream can deliver a big backlog of input in one message.** Observed
    once: ~70 historical events at connect. Acting on it would fire dozens of
    toggles and resets, so `behavior.maxEventsPerMessage` drops oversized bursts.
+
+13. **The Bar pads `Content-Length`, and that breaks `fetch()`.** A 24-byte
+   body is announced as `Content-Length: 24` followed by **nine spaces** — the
+   firmware `printf`s the header into a fixed-width field. RFC 7230 permits
+   trailing whitespace after a field value, and curl, `node:http` and Python
+   all strip it. `fetch()` does not: undici reports the header as `24` but its
+   own end-of-message accounting disagrees, aborts the body mid-read, and
+   throws a bare `TypeError: terminated`. Every call to the device fails, on
+   the first byte of the first response.
+
+   This is why `src/api.ts` is built on `node:http` and not `fetch`. Do not
+   "modernise" it back. There is a test that serves the device's exact bytes,
+   padding included; it fails within seconds if the transport is swapped.
+
+   Two smaller lessons came with it. Leading whitespace is fine and trailing is
+   not, so the header *looks* well-formed in every debugger. And the error said
+   only `terminated` because the failing call — `response.json()` — sat one
+   line outside the `try` that would have unwrapped its `cause`. Read bodies
+   inside the same error boundary as the request.
 
 ## Working style for this repo
 

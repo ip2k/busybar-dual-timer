@@ -257,8 +257,11 @@ touch the `Config` interface, `DEFAULTS`, and `validate()` together.
 
 ## Deliberate constraints
 
-- **Zero runtime dependencies.** Node 22 gives us `fetch`, `WebSocket` and type
-  stripping; nothing else is needed. This makes deployment a file copy.
+- **Zero runtime dependencies.** Node 22 gives us `node:http`, `WebSocket` and
+  type stripping; nothing else is needed. This makes deployment a file copy.
+  The HTTP client is `node:http` rather than `fetch` because the Bar pads its
+  `Content-Length` header and undici rejects the body when it does — see trap
+  #13 in CLAUDE.md.
 - **No parameter properties, no `enum`.** Node's native type stripping rejects
   both, and `npm run dev` relies on it.
 - **Pure core.** `timers.ts` and `render.ts` do no I/O, which is why the smoke
