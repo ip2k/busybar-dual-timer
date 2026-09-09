@@ -644,6 +644,37 @@ console.log('config safety: ok');
     assert.equal(version.api_semver, '27.5.0', 'a padded Content-Length must still be readable');
   }
 
+  // Uploads must be sent with a Content-Length, never chunked. The Bar does not
+  // read a chunked request body: it answers {"result":"OK"} and writes a
+  // zero-byte file, so a chime uploads "successfully" and is silent, and the
+  // only symptom is a 404 from /api/audio/play minutes later. node:http falls
+  // back to chunked whenever the length is not set, so this is one line of
+  // client code away at all times.
+  {
+    let seen: { length?: string; encoding?: string; bytes?: number } = {};
+    const upload = createServer((req, res) => {
+      let bytes = 0;
+      req.on('data', (chunk: Buffer) => (bytes += chunk.length));
+      req.on('end', () => {
+        seen = {
+          length: req.headers['content-length'],
+          encoding: req.headers['transfer-encoding'],
+          bytes,
+        };
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end('{"result":"OK"}');
+      });
+    });
+    await new Promise<void>((resolve) => upload.listen(0, '127.0.0.1', resolve));
+    const { port } = upload.address() as { port: number };
+    const payload = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+    await new BusyBarClient(`127.0.0.1:${port}`).uploadAsset('dual_timer', 'chime.wav', payload);
+    upload.close();
+    assert.equal(seen.bytes, payload.length, 'the whole payload must arrive');
+    assert.equal(seen.length, String(payload.length), 'uploads must carry a Content-Length');
+    assert.equal(seen.encoding, undefined, 'uploads must not be chunked');
+  }
+
   // A redirect from the device is refused, never followed: following one would
   // hand the token header and the request body to whatever host it named.
   const server = createServer((_req, res) => {

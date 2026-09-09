@@ -180,6 +180,27 @@ smoke test meaningful. I/O belongs in `api.ts` and orchestration in `index.ts`.
    line outside the `try` that would have unwrapped its `cause`. Read bodies
    inside the same error boundary as the request.
 
+14. **Never send the Bar a chunked request body.** `node:http` uses chunked
+   transfer-encoding whenever `Content-Length` is not set, and the firmware
+   does not read a chunked body. It does not fail: `POST /api/assets/upload`
+   answers `{"result":"OK"}` and writes a **zero-byte file**. The upload log
+   line says "uploaded chime.wav (47628 bytes)" because that is what we sent,
+   not what landed.
+
+   Nothing goes wrong for several minutes. Then a timer expires and
+   `POST /api/audio/play` returns `404 {"error":"Failed to play audio"}`, three
+   times, and the alarm is silent. `GET /api/storage/list` is the only way to
+   see the truth — check the **size**, not the presence.
+
+   Worse, the zero-byte file cannot be overwritten: a later upload to the same
+   name returns `508 {"error":"Failed to open file for writing"}`. It has to be
+   deleted first, with `DELETE /api/storage/remove?path=/ext/...`.
+
+   `api.ts` now sets `Content-Length` on every request that has a body, and a
+   test asserts uploads are neither chunked nor missing the header. This one
+   cost an hour of a soak run and was found only because the sound failure was
+   logged rather than swallowed — keep logging failures that don't stop the app.
+
 ## Working style for this repo
 
 - Prefer verifying against the live Bar over trusting the docs. Several
