@@ -32,16 +32,19 @@ existing code moved across unchanged.
 Every claim here was measured on a device running 1.2.3, not inferred from
 source. Where we did read source, we say so.
 
-One item below — the `Content-Length` note — is not about the JS runtime at
-all. It came up afterwards, in the off-device app, and it is small enough to
-fix in a line, so we have put it first rather than burying it.
+Two items below — grouped as #0 — are not about the JS runtime at all. They
+came up afterwards in the off-device app, and both look small to fix, so we
+have put them first rather than burying them.
 
 ---
 
-## 0. `Content-Length` is padded, which trips up Node's `fetch`
+## 0. Two HTTP API notes, not JS-runtime issues
 
-Not a JS-runtime issue, and a small one — but it is the only thing here that
-stops an integration dead, and the fix looks like a one-character change.
+Both came out of our off-device app rather than the port. Neither is a big
+change, and 0.2 in particular we think is worth your time — it is the only
+thing we have found on the Bar that loses data while reporting success.
+
+### 0.1 `Content-Length` is padded, which trips up Node's `fetch`
 
 Responses appear to have their `Content-Length` value written into a
 fixed-width field, so the header goes out padded with trailing spaces. Read off
@@ -90,6 +93,54 @@ serving those exact bytes. We have worked around it by moving to `node:http`.
 
 **Request:** drop the field width when emitting the header, if that is all it
 is. We are happy to re-test a build against the same app and report back.
+
+### 0.2 A chunked request body is accepted, then silently discarded
+
+This one cost us an hour, and we think it is the more valuable of the two.
+
+`POST /api/assets/upload` with `Transfer-Encoding: chunked` and no
+`Content-Length` returns:
+
+```
+200 {"result":"OK"}
+```
+
+and writes a **zero-byte file**. The same bytes sent with a `Content-Length`
+land intact — we uploaded 8820 bytes both ways to confirm, and read the sizes
+back with `GET /api/storage/list`.
+
+Chunked is not exotic: it is what Node's `http` module does by default whenever
+the caller has not set a length, so it is one line of client code away at all
+times. We hit it while working around 0.1 above.
+
+What made it expensive is that nothing surfaces at the time. The upload
+reports OK, the file appears in a directory listing, and the only symptom
+arrives minutes later when `POST /api/audio/play` returns
+`404 {"error":"Failed to play audio"}` and the alarm is silent. The file size
+in `storage/list` is the only place the truth is visible.
+
+Two smaller observations from the same session, offered as context rather than
+as separate asks:
+
+- **A zero-byte file left this way could not be overwritten.** A later upload
+  to the same name returned `508 {"error":"Failed to open file for writing"}`,
+  where overwriting a healthy file of the same name returned OK. Deleting it
+  first was the only way forward.
+- **We may have wedged the HTTP server deleting one.** A
+  `DELETE /api/storage/remove` on one of those zero-byte files did not return,
+  and the API stopped answering afterwards — the port still accepted TCP but
+  no request completed. An identical delete on a healthy file, and on another
+  zero-byte file minutes earlier, both returned OK, so we cannot reproduce
+  this on purpose and are not claiming a cause. Mentioning it only in case it
+  rings a bell alongside the above.
+
+**Requests, in order of usefulness to us:** reject a chunked request body with
+a 4xx rather than accepting it, or read it. Either is fine — the silent
+success is the problem, not the lack of chunked support. If neither is
+practical soon, a line in the docs saying `Content-Length` is required would
+have saved the whole hour.
+
+We are happy to test any of this against a build.
 
 
 ## 1. There is no way for a JS app to read input
