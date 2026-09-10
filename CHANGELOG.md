@@ -10,6 +10,31 @@ will not be cut without one.
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-09-09
+
+**Take this if you use a custom expiry sound.** 1.1.1 uploads zero-byte sound
+files, so the alarm is silent — the display still flashes.
+
+### Fixed
+
+- **Uploaded sounds arrived empty on 1.1.1.** The `node:http` switch in 1.1.1
+  left `Content-Length` unset, so Node fell back to chunked transfer-encoding
+  — `fetch` had been setting the header for us. The Bar does not read a chunked
+  request body, and does not reject one either: `POST /api/assets/upload`
+  answers `{"result":"OK"}` and writes a zero-byte file. The startup log still
+  printed `uploaded chime.wav (47628 bytes)`, because that is what was sent,
+  not what landed. `Content-Length` is now set on every request that carries a
+  body, which is what a client should do regardless. ([`2c51f70`])
+
+  It surfaced only minutes later, as `404 {"error":"Failed to play audio"}` on
+  expiry, three times, with a silent alarm. `GET /api/storage/list` is the only
+  place the truth was visible — check the **size**, not the presence. This is
+  trap #14 in `CLAUDE.md`, and it has been reported upstream.
+
+  Verified on hardware: `chime.wav` landed at its full 47628 bytes. The test
+  asserts uploads carry a `Content-Length` and are not chunked, and was checked
+  by removing the fix.
+
 ## [1.1.1] - 2026-09-09
 
 **Anyone running firmware 1.2.3 should take this release: 1.1.0 cannot talk to
@@ -212,6 +237,7 @@ off-device over the local HTTP API.
 [1.0.4]: https://github.com/ip2k/busybar-dual-timer/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/ip2k/busybar-dual-timer/compare/v1.0.1...v1.0.3
 [1.0.1]: https://github.com/ip2k/busybar-dual-timer/compare/v1.0.0...v1.0.1
+[1.1.2]: https://github.com/ip2k/busybar-dual-timer/releases/tag/v1.1.2
 [1.1.1]: https://github.com/ip2k/busybar-dual-timer/releases/tag/v1.1.1
 [1.0.0]: https://github.com/ip2k/busybar-dual-timer/releases/tag/v1.0.0
 [`6db4d20`]: https://github.com/ip2k/busybar-dual-timer/commit/6db4d20
@@ -229,3 +255,4 @@ off-device over the local HTTP API.
 [`bbbeef7`]: https://github.com/ip2k/busybar-dual-timer/commit/bbbeef7
 [`b467ffe`]: https://github.com/ip2k/busybar-dual-timer/commit/b467ffe
 [`bd82220`]: https://github.com/ip2k/busybar-dual-timer/commit/bd82220
+[`2c51f70`]: https://github.com/ip2k/busybar-dual-timer/commit/2c51f70
