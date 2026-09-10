@@ -147,6 +147,7 @@ export class BusyBarClient {
 
   private send(method: string, path: string, options: RequestOptions): Promise<DeviceResponse> {
     const url = new URL(`${this.base}${path}`);
+    const body = options.body === undefined ? undefined : Buffer.from(options.body as Uint8Array | string);
     return new Promise<DeviceResponse>((resolve, reject) => {
       const req = httpRequest(
         {
@@ -154,7 +155,17 @@ export class BusyBarClient {
           port: url.port || 80,
           path: `${url.pathname}${url.search}`,
           method,
-          headers: { ...this.headers, ...options.headers },
+          headers: {
+            ...this.headers,
+            ...options.headers,
+            // Length the request ourselves, always. Without it node falls back
+            // to chunked transfer-encoding, and the Bar does not read a chunked
+            // body: it answers {"result":"OK"} and writes a zero-byte file.
+            // The upload "succeeds", the sound is silently empty, and the only
+            // symptom is a 404 from /api/audio/play some minutes later when a
+            // timer expires. See trap #14 in CLAUDE.md.
+            ...(body === undefined ? {} : { 'Content-Length': String(body.length) }),
+          },
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         },
         (res: IncomingMessage) => {
@@ -173,7 +184,7 @@ export class BusyBarClient {
         },
       );
       req.on('error', reject);
-      if (options.body !== undefined) req.write(options.body);
+      if (body !== undefined) req.write(body);
       req.end();
     });
   }
