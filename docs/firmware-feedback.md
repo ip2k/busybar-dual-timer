@@ -122,10 +122,11 @@ in `storage/list` is the only place the truth is visible.
 Two smaller observations from the same session, offered as context rather than
 as separate asks:
 
-- **A zero-byte file left this way could not be overwritten.** A later upload
-  to the same name returned `508 {"error":"Failed to open file for writing"}`,
-  where overwriting a healthy file of the same name returned OK. Deleting it
-  first was the only way forward.
+- **A zero-byte file left this way could not be overwritten until the device
+  was restarted.** Within the same boot, a later upload to the same name
+  returned `508 {"error":"Failed to open file for writing"}`, where overwriting
+  a healthy file returned OK — it looks like a handle is left open. After a
+  restart the same upload overwrote it cleanly.
 - **We may have wedged the HTTP server deleting one.** A
   `DELETE /api/storage/remove` on one of those zero-byte files did not return,
   and the API stopped answering afterwards — the port still accepted TCP but
