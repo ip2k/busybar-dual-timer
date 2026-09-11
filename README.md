@@ -223,18 +223,22 @@ The widget redraws itself either way (see `reassertEveryMs`), so APPS is
 survivable — it just flickers back to the device UI for a second or two. CUSTOM
 avoids it entirely.
 
-#### Optional: make the lever an on/off switch for the timer
+#### The lever is the on/off switch for the timer
 
-By default the widget is always on screen. Set:
-
-```json
-"behavior": { "activeSwitchPosition": "custom" }
-```
-
-and the lever becomes the app switcher: **CUSTOM shows the timer, every other
+By default the lever is the app switcher: **CUSTOM shows the timer, every other
 position leaves the Bar completely alone.** Move away from CUSTOM and the widget
-is taken down, revealing whatever the device was showing; move back and it
-returns.
+is taken down, revealing whatever the device was showing — the calendar on
+APPS, a session on BUSY; move back and it returns.
+
+That is `"behavior": { "activeSwitchPosition": "custom" }`. Set it to `null`
+to show the timer whatever the lever is doing, which only makes sense on a Bar
+that does nothing else — before 1.1.3 that was the default, and it meant the
+timer drew over the calendar on APPS.
+
+One thing to know: **the Bar only reports the lever when it moves.** Nothing
+exposes the current position, so at startup the timer does not know where the
+lever is and stays hidden until it moves once, even if it is already on
+CUSTOM. The log says so. Flick it away and back.
 
 **The controls go inert too.** With the lever elsewhere, START, the dial and
 BACK do nothing to this app — presses aren't just ignored on screen, they're

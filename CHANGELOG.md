@@ -10,6 +10,34 @@ will not be cut without one.
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-09-10
+
+### Changed
+
+- **The lever gates the timer by default.** `behavior.activeSwitchPosition`
+  now defaults to `"custom"`, so the widget appears only with the lever on
+  CUSTOM and every other position leaves the Bar alone. It used to default to
+  `null` — show the timer whatever the lever is doing — which meant the timer
+  drew over the calendar on APPS. That was the first bug reported from actual
+  use, and the lever is the Bar's own idea of "which app", so honouring it is
+  the least surprising default. `null` still works for a Bar that does nothing
+  else. ([`__FIX__`])
+
+  **If your `config.json` was written from an older `config.example.json`, it
+  carries `"activeSwitchPosition": null` explicitly and will keep the old
+  behaviour** — change it to `"custom"` or delete the line.
+
+  One thing to know: the Bar only reports the lever when it *moves*, and nothing
+  exposes the current position (`/api/status`, `/api/busy/snapshot` and the
+  WebSocket's connect-time state were all checked on 27.5.0). So at startup the
+  timer stays hidden until the lever moves once, even if it is already on
+  CUSTOM. The startup log says so.
+
+  Verified on hardware: with the lever on APPS the app started, handed the
+  screen back, and the panel showed the device's own calendar rather than the
+  timer. The gate's appear/disappear behaviour on lever moves was verified on
+  2026-09-03 and the code path is unchanged.
+
 ## [1.1.2] - 2026-09-09
 
 **Take this if you use a custom expiry sound.** 1.1.1 uploads zero-byte sound
@@ -237,6 +265,7 @@ off-device over the local HTTP API.
 [1.0.4]: https://github.com/ip2k/busybar-dual-timer/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/ip2k/busybar-dual-timer/compare/v1.0.1...v1.0.3
 [1.0.1]: https://github.com/ip2k/busybar-dual-timer/compare/v1.0.0...v1.0.1
+[1.1.3]: https://github.com/ip2k/busybar-dual-timer/releases/tag/v1.1.3
 [1.1.2]: https://github.com/ip2k/busybar-dual-timer/releases/tag/v1.1.2
 [1.1.1]: https://github.com/ip2k/busybar-dual-timer/releases/tag/v1.1.1
 [1.0.0]: https://github.com/ip2k/busybar-dual-timer/releases/tag/v1.0.0
