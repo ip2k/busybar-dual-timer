@@ -9,6 +9,27 @@ HTTP API enabled; Wi-Fi runs need a token, USB does not.
 
 ## Verified on hardware
 
+### The lever gate, as the default, on firmware 1.2.3 (2026-09-11)
+
+1.1.3 made `activeSwitchPosition: "custom"` the default after the timer was
+seen drawing over the calendar on APPS. Verified by hand, lever on APPS at
+startup, then flipped to CUSTOM and back:
+
+```
+06:53:39  [display] waiting for the lever — the widget shows only on 'custom'
+06:53:39  [display] handed the screen back to the device
+07:06:05  [input] switch -> off
+07:06:05  [input] switch -> custom (widget on)
+07:06:11  [input] switch -> off (widget off)
+07:06:11  [display] handed the screen back to the device
+07:06:11  [input] switch -> apps
+```
+
+`GET /api/screen?display=0` at startup showed the device's own calendar, not
+the timer. The widget appeared on CUSTOM, held ~5 s, and was cleared 25 ms
+after the lever left — before it reached APPS. Every intermediate detent (OFF
+both ways) was reported.
+
 ### Uploads land intact again, and both chimes play (2026-09-10)
 
 Follow-up to the 1.1.1 regression (chunked uploads, zero-byte files — trap

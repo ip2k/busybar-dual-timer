@@ -35,8 +35,8 @@ will not be cut without one.
 
   Verified on hardware: with the lever on APPS the app started, handed the
   screen back, and the panel showed the device's own calendar rather than the
-  timer. The gate's appear/disappear behaviour on lever moves was verified on
-  2026-09-03 and the code path is unchanged.
+  timer. Flipped to CUSTOM the widget appeared; flipped away it was cleared
+  25 ms later, before the lever reached APPS.
 
 ## [1.1.2] - 2026-09-09
 
