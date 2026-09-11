@@ -9,6 +9,24 @@ HTTP API enabled; Wi-Fi runs need a token, USB does not.
 
 ## Verified on hardware
 
+### Uploads land intact again, and both chimes play (2026-09-10)
+
+Follow-up to the 1.1.1 regression (chunked uploads, zero-byte files — trap
+#14). With 1.1.2 against the device:
+
+```
+[sound] A: uploaded chime.wav (47628 bytes)
+[sound] B: uploaded chime-2.wav (49392 bytes)
+```
+
+and `GET /api/storage/list` agreed: `47628` and `49392`. The second file had
+been a zero-byte leftover from the chunked upload and overwrote cleanly after a
+device restart — the `508` seen earlier the same boot did not recur.
+
+Both files were then played with `POST /api/audio/play` and **heard**, two
+seconds apart. A nonexistent path still returned `200 OK` on 1.2.3; the
+zero-byte file had returned `404 Failed to play audio`.
+
 ### The remapped control scheme, on firmware 1.2.3 (2026-09-09)
 
 The START / dial mapping had been implemented and tested offline since

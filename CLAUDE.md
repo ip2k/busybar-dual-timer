@@ -131,9 +131,11 @@ smoke test meaningful. I/O belongs in `api.ts` and orchestration in `index.ts`.
    twice over: audible by ear, and the stock sounds are exactly 0.5 s / 1.5 s at
    that format.
 6. **`POST /api/audio/play` returns `200 {"result":"OK"}` for files that do not
-   exist**, and never the `404` its spec documents. The status code is worthless
-   as evidence — audio can only be verified by a person listening. Do not mark it
-   verified any other way.
+   exist**, and never the `404` its spec documents. Still true on 1.2.3. It
+   *does* return `404 {"error":"Failed to play audio"}` for a file that exists
+   but is empty — so it checks what it decodes, not what it opens. Either way
+   the status code is worthless as evidence — audio can only be verified by a
+   person listening. Do not mark it verified any other way.
 7. **`GET /api/storage/list` needs a path starting with `/ext`.** `?path=/`
    returns 400. Stock sounds live in `/ext/apps_assets/shared/sounds`; this app's
    uploads land in `/ext/user_assets/dual_timer/`.
@@ -192,9 +194,13 @@ smoke test meaningful. I/O belongs in `api.ts` and orchestration in `index.ts`.
    times, and the alarm is silent. `GET /api/storage/list` is the only way to
    see the truth — check the **size**, not the presence.
 
-   Worse, the zero-byte file cannot be overwritten: a later upload to the same
-   name returns `508 {"error":"Failed to open file for writing"}`. It has to be
-   deleted first, with `DELETE /api/storage/remove?path=/ext/...`.
+   Within the same boot, the zero-byte file cannot be overwritten: a later
+   upload to the same name returns `508 {"error":"Failed to open file for
+   writing"}` — a handle is evidently left open. After a device restart the
+   same upload overwrites it cleanly. `DELETE /api/storage/remove?path=/ext/...`
+   is the delete endpoint, but one such delete on a zero-byte file wedged the
+   HTTP server until a power cycle (once; not reproduced). Prefer restarting
+   the Bar to deleting.
 
    `api.ts` now sets `Content-Length` on every request that has a body, and a
    test asserts uploads are neither chunked nor missing the header. This one
