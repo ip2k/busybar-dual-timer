@@ -21,7 +21,7 @@ will not be cut without one.
   drew over the calendar on APPS. That was the first bug reported from actual
   use, and the lever is the Bar's own idea of "which app", so honouring it is
   the least surprising default. `null` still works for a Bar that does nothing
-  else. ([`__FIX__`])
+  else. ([`824a6bf`])
 
   **If your `config.json` was written from an older `config.example.json`, it
   carries `"activeSwitchPosition": null` explicitly and will keep the old
@@ -285,3 +285,4 @@ off-device over the local HTTP API.
 [`b467ffe`]: https://github.com/ip2k/busybar-dual-timer/commit/b467ffe
 [`bd82220`]: https://github.com/ip2k/busybar-dual-timer/commit/bd82220
 [`2c51f70`]: https://github.com/ip2k/busybar-dual-timer/commit/2c51f70
+[`824a6bf`]: https://github.com/ip2k/busybar-dual-timer/commit/824a6bf
