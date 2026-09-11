@@ -114,7 +114,11 @@ export interface Config {
      * Only show the widget when the physical lever is in this position, so the
      * lever picks between the device's own apps and this timer.
      *
-     * `null` (the default) means always show it, whatever the lever is doing.
+     * `"custom"` is the default: the lever is how the Bar chooses what is on
+     * screen, and a timer that draws over the calendar on APPS is a bug from
+     * the user's side of the glass — that is exactly how it was reported.
+     * `null` means always show it, whatever the lever is doing, which is only
+     * sensible on a Bar that does nothing else.
      *
      * Caveat worth knowing: the lever position is only reported when it
      * *changes* — no endpoint exposes it, checked. So on startup the position is
@@ -181,7 +185,7 @@ const DEFAULTS: Config = {
     maxEventsPerMessage: 8,
     reassertEveryMs: 2000,
     ledMode: 'transitions',
-    activeSwitchPosition: null,
+    activeSwitchPosition: 'custom',
   },
   expiry: {
     flashSeconds: 10,

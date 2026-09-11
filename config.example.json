@@ -36,7 +36,7 @@
     "maxEventsPerMessage": 8,
     "reassertEveryMs": 2000,
     "ledMode": "transitions",
-    "activeSwitchPosition": null
+    "activeSwitchPosition": "custom"
   },
 
   "expiry": {

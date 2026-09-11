@@ -135,8 +135,11 @@ the flash back.
 ### The lever as an app switch
 
 `behavior.activeSwitchPosition` makes the physical lever choose between the
-device's own apps and this timer. It is off by default; set to `"custom"` the
-widget appears only in that position.
+device's own apps and this timer. It defaults to `"custom"`: the widget appears
+only in that position. `null` shows it everywhere, which was the default until
+1.1.3 and produced the first bug report from actual use — the timer drawing
+over the calendar on APPS. The lever is the Bar's own idea of "which app", so
+honouring it is the least surprising thing this program can do.
 
 Two halves, and the second matters more than it looks:
 

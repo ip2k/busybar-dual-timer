@@ -545,6 +545,15 @@ console.log('audio: ok');
   // A plain filename is still fine.
   const ok = loadConfig(write({ expiry: { sound: { file: 'chime.wav' } } }));
   assert.equal(ok.config.expiry.sound.file, 'chime.wav');
+
+  // The lever gates the widget by default. `null` used to be the default, and
+  // it meant the timer drew over the calendar with the lever on APPS — the
+  // first bug report from real use. Both values must still load; only the
+  // default moved.
+  assert.equal(ok.config.behavior.activeSwitchPosition, 'custom', 'the lever must gate the widget by default');
+  const everywhere = loadConfig(write({ behavior: { activeSwitchPosition: null } }));
+  assert.equal(everywhere.config.behavior.activeSwitchPosition, null, 'null must still opt out of gating');
+  assert.throws(() => loadConfig(write({ behavior: { activeSwitchPosition: 'sideways' } })), /activeSwitchPosition/);
 }
 console.log('config safety: ok');
 

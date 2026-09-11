@@ -6,8 +6,11 @@ Guidance for Claude Code working in this repo.
 
 `busy-dual-timer` — two configurable countdowns on a BUSY Bar. START =
 start/pause, dial click = switch A/B, dial double-click = reset, dial turn =
-adjust minutes, dial held + turn = adjust seconds. BACK is deliberately unbound. Everything runs off-device against the Bar's
-local HTTP API; nothing is installed on the Bar itself.
+adjust minutes, dial held + turn = adjust seconds. BACK is deliberately unbound.
+The widget shows only with the lever on **CUSTOM** (`behavior.activeSwitchPosition`,
+default `"custom"` since 1.1.3 — `null` drew over the calendar on APPS and was
+the first bug reported from real use). Everything runs off-device against the
+Bar's local HTTP API; nothing is installed on the Bar itself.
 
 Status: **working, and driven through a full cycle against real hardware**
 (2026-09-02) over both USB and Wi-Fi — startup, input stream, gestures by hand,
